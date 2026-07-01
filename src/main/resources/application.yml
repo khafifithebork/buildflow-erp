@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: erp
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/buildflow}
+    username: ${DB_USERNAME:buildflow}
+    password: ${DB_PASSWORD:buildflow_dev}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+  liquibase:
+    enabled: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

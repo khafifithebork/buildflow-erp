@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: buildflow-postgres
+    environment:
+      POSTGRES_DB: buildflow
+      POSTGRES_USER: buildflow
+      POSTGRES_PASSWORD: buildflow_dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - buildflow_pgdata:/var/lib/postgresql/data
+
+volumes:
+  buildflow_pgdata:
