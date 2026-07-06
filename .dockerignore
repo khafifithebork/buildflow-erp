@@ -1,0 +1,37 @@
+# === Build artifacts ===
+target/
+!target/*.jar
+
+# === IDE / editor ===
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+*.swp
+*.swo
+
+# === Version control ===
+.git/
+.gitignore
+
+# === Docker (avoid recursive context) ===
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# === OS junk ===
+Thumbs.db
+.DS_Store
+
+# === Environment / secrets ===
+.env
+*.env
+
+# === Documentation ===
+*.md
+LICENSE
+
+# === Agents / tooling ===
+.agents/
+.gemini/
