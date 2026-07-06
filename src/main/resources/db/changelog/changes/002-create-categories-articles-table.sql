@@ -1,6 +1,5 @@
 --liquibase formatted sql
 
---changeset khafifi:002-create-categories-articles-table
 CREATE TABLE categories_articles (
                                      id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                                      code       VARCHAR(10)  NOT NULL UNIQUE,
