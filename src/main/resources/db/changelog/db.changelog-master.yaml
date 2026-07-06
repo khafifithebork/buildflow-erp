@@ -2,3 +2,9 @@ databaseChangeLog:
   - include:
       file: db/changelog/changes/001-create-users-table.sql
       relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/002-create-categories-articles-table.sql
+      relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/003-create-articles-table.sql
+      relativeToChangelogFile: false

@@ -16,5 +16,19 @@ services:
       timeout: 5s
       retries: 5
 
+  app:
+    build: .
+    container_name: buildflow-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/buildflow
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+    ports:
+      - "8080:8080"
+
 volumes:
   postgres-data:
