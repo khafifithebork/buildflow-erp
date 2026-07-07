@@ -1,5 +1,6 @@
 --liquibase formatted sql
 
+--changeset khafifi:003-create-articles-table
 CREATE TABLE articles (
                           id                          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                           code                        VARCHAR(50)  NOT NULL UNIQUE,

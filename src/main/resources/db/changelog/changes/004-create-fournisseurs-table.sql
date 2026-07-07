@@ -1,4 +1,5 @@
 --liquibase formatted sql
+--changeset khafifi:004-create-fournisseurs-table
 
 CREATE TABLE fournisseurs (
                               id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -19,4 +20,5 @@ CREATE TABLE fournisseurs (
                               created_at           TIMESTAMP NOT NULL DEFAULT now(),
                               updated_at           TIMESTAMP NOT NULL DEFAULT now()
 );
+
 --rollback DROP TABLE fournisseurs;
