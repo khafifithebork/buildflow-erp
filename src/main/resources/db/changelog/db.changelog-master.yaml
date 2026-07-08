@@ -38,3 +38,9 @@ databaseChangeLog:
   - include:
       file: db/changelog/changes/013-fix-mouvements-stock-updated-at.sql
       relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/014-create-caisses-table.sql
+      relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/015-create-caisse-transactions-table.sql
+      relativeToChangelogFile: false

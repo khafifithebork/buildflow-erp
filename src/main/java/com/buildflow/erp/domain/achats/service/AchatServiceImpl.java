@@ -17,6 +17,7 @@ import com.buildflow.erp.domain.referentiel.repository.ArticleRepository;
 import com.buildflow.erp.domain.referentiel.repository.ChantierRepository;
 import com.buildflow.erp.domain.referentiel.repository.FournisseurRepository;
 import com.buildflow.erp.domain.stock.service.StockService;
+import com.buildflow.erp.domain.tresorerie.service.TresorerieService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +37,7 @@ public class AchatServiceImpl implements AchatService {
     private final ArticleRepository articleRepository;
     private final AchatMapper achatMapper;
     private final StockService stockService;
+    private final TresorerieService tresorerieService;
 
     private static final BigDecimal TVA_RATE = new BigDecimal("0.20"); // 20% Moroccan TVA
 
@@ -144,7 +146,9 @@ public class AchatServiceImpl implements AchatService {
 
         achat.setStatut(AchatStatut.PAYE);
 
-        // TODO: Trigger TresorerieService.debiterFournisseur(achat) when Treasury domain is built
+        // CROSS-DOMAIN SIDE EFFECT: Debit the chantier's caisse
+        tresorerieService.debiterPourAchat(
+                achat.getChantier().getId(), achat.getTtc(), achat.getRef());
 
         return achatMapper.toResponse(achatRepository.save(achat));
     }
