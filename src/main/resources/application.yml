@@ -1,12 +1,10 @@
-server:
-  servlet:
-    encoding:
-      charset: UTF-8
-      enabled: true
-      force: true
-      force-request: true
-      force-response: true
 spring:
+  http:
+    servlet:
+      encoding:
+        charset: UTF-8
+        enabled: true
+        force: true
   application:
     name: erp
   datasource:
