@@ -23,3 +23,15 @@ databaseChangeLog:
   - include:
       file: db/changelog/changes/008-create-sous-traitants-table.sql
       relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/009-create-achat-table.sql
+      relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/010-create-lignes-achat-table.sql
+      relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/011-create-stock-articles-table.sql
+      relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/010-create-mouvements-stock-table.sql
+      relativeToChangelogFile: false
