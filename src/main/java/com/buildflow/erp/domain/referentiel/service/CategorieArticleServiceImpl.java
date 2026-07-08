@@ -1,5 +1,6 @@
 package com.buildflow.erp.domain.referentiel.service;
 
+import com.buildflow.erp.common.dto.PageResponse;
 import com.buildflow.erp.common.exception.ConflictException;
 import com.buildflow.erp.common.exception.ResourceNotFoundException;
 import com.buildflow.erp.domain.referentiel.dto.request.CreateCategorieArticleRequest;
@@ -8,6 +9,7 @@ import com.buildflow.erp.domain.referentiel.entity.CategorieArticle;
 import com.buildflow.erp.domain.referentiel.mapper.CategorieArticleMapper;
 import com.buildflow.erp.domain.referentiel.repository.CategorieArticleRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -50,9 +52,10 @@ public class CategorieArticleServiceImpl implements CategorieArticleService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<CategorieArticleResponse> findAll() {
-        return categorieArticleRepository.findAll().stream()
-                .map(categorieArticleMapper::toResponse)
-                .toList();
+    public PageResponse<CategorieArticleResponse> findAll(Pageable pageable) {
+        return PageResponse.from(
+                categorieArticleRepository.findAll(pageable)
+                        .map(categorieArticleMapper::toResponse)
+        );
     }
 }

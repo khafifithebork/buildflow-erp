@@ -1,11 +1,14 @@
 package com.buildflow.erp.domain.referentiel.controller;
 
 import com.buildflow.erp.common.dto.ApiResponse;
+import com.buildflow.erp.common.dto.PageResponse;
 import com.buildflow.erp.domain.referentiel.dto.request.CreateArticleRequest;
 import com.buildflow.erp.domain.referentiel.dto.response.ArticleResponse;
 import com.buildflow.erp.domain.referentiel.service.ArticleService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -34,7 +37,8 @@ public class ArticleController {
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<ArticleResponse>>> findAll() {
-        return ResponseEntity.ok(ApiResponse.success(articleService.findAll()));
+    public ResponseEntity<ApiResponse<PageResponse<ArticleResponse>>> findAll(
+            @PageableDefault(size = 20, sort = "code") Pageable pageable) {
+        return ResponseEntity.ok(ApiResponse.success(articleService.findAll(pageable)));
     }
 }

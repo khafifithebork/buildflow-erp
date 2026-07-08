@@ -1,11 +1,14 @@
 package com.buildflow.erp.domain.referentiel.controller;
 
 import com.buildflow.erp.common.dto.ApiResponse;
+import com.buildflow.erp.common.dto.PageResponse;
 import com.buildflow.erp.domain.referentiel.dto.request.CreateCategorieArticleRequest;
 import com.buildflow.erp.domain.referentiel.dto.response.CategorieArticleResponse;
 import com.buildflow.erp.domain.referentiel.service.CategorieArticleService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -35,7 +38,8 @@ public class CategorieArticleController {
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<CategorieArticleResponse>>> findAll() {
-        return ResponseEntity.ok(ApiResponse.success(categorieArticleService.findAll()));
+    public ResponseEntity<ApiResponse<PageResponse<CategorieArticleResponse>>> findAll(
+            @PageableDefault(size = 20, sort = "code") Pageable pageable) {
+        return ResponseEntity.ok(ApiResponse.success(categorieArticleService.findAll(pageable)));
     }
 }

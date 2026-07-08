@@ -16,6 +16,7 @@ import com.buildflow.erp.domain.referentiel.entity.Fournisseur;
 import com.buildflow.erp.domain.referentiel.repository.ArticleRepository;
 import com.buildflow.erp.domain.referentiel.repository.ChantierRepository;
 import com.buildflow.erp.domain.referentiel.repository.FournisseurRepository;
+import com.buildflow.erp.domain.stock.service.StockService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +35,7 @@ public class AchatServiceImpl implements AchatService {
     private final ChantierRepository chantierRepository;
     private final ArticleRepository articleRepository;
     private final AchatMapper achatMapper;
+    private final StockService stockService;
 
     private static final BigDecimal TVA_RATE = new BigDecimal("0.20"); // 20% Moroccan TVA
 
@@ -114,9 +116,12 @@ public class AchatServiceImpl implements AchatService {
         achat.setStatut(AchatStatut.LIVRE);
         achat.setBonLivraisonRef(bonLivraisonRef);
 
-        // TODO: Trigger StockService.approvisionner(achat) when Stock domain is built
+        Achat savedAchat = achatRepository.save(achat);
 
-        return achatMapper.toResponse(achatRepository.save(achat));
+        // CROSS-DOMAIN SIDE EFFECT: Increment Stock
+        stockService.approvisionnerDepuisAchat(savedAchat);
+
+        return achatMapper.toResponse(savedAchat);
     }
 
     @Override

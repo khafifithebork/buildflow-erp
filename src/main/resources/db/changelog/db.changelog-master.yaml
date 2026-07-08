@@ -33,5 +33,8 @@ databaseChangeLog:
       file: db/changelog/changes/011-create-stock-articles-table.sql
       relativeToChangelogFile: false
   - include:
-      file: db/changelog/changes/010-create-mouvements-stock-table.sql
+      file: db/changelog/changes/012-create-mouvements-stock-table.sql
+      relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/013-fix-mouvements-stock-updated-at.sql
       relativeToChangelogFile: false

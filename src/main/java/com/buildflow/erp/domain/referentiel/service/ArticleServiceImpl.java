@@ -1,5 +1,6 @@
 package com.buildflow.erp.domain.referentiel.service;
 
+import com.buildflow.erp.common.dto.PageResponse;
 import com.buildflow.erp.common.exception.ConflictException;
 import com.buildflow.erp.common.exception.ResourceNotFoundException;
 import com.buildflow.erp.domain.referentiel.dto.request.CreateArticleRequest;
@@ -10,6 +11,7 @@ import com.buildflow.erp.domain.referentiel.mapper.ArticleMapper;
 import com.buildflow.erp.domain.referentiel.repository.ArticleRepository;
 import com.buildflow.erp.domain.referentiel.repository.CategorieArticleRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,11 +51,11 @@ public class ArticleServiceImpl implements ArticleService {
         return articleMapper.toResponse(article);
     }
 
-    @Override
     @Transactional(readOnly = true)
-    public List<ArticleResponse> findAll() {
-        return articleRepository.findAll().stream()
-                .map(articleMapper::toResponse)
-                .toList();
+    public PageResponse<ArticleResponse> findAll(Pageable pageable) {
+        return PageResponse.from(
+                articleRepository.findAll(pageable)
+                        .map(articleMapper::toResponse)
+        );
     }
 }
