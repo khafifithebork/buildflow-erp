@@ -1,6 +1,7 @@
 package com.buildflow.erp.domain.auth.entity;
 
 import com.buildflow.erp.common.entity.BaseEntity;
+import com.buildflow.erp.domain.auth.entity.UserStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -26,4 +27,8 @@ public class User extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)
     private Role role;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false , length=20)
+    private UserStatus status = UserStatus.APPROVED;
 }
