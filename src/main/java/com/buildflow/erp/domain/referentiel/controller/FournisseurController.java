@@ -22,7 +22,6 @@ public class FournisseurController {
     private final FournisseurService fournisseurService;
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'ACHAT')")
     public ResponseEntity<ApiResponse<FournisseurResponse>> create(
             @Valid @RequestBody CreateFournisseurRequest request) {
         FournisseurResponse response = fournisseurService.create(request);

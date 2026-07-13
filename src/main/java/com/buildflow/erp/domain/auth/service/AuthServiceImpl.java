@@ -5,14 +5,18 @@ import com.buildflow.erp.domain.auth.dto.request.LoginRequest;
 import com.buildflow.erp.domain.auth.dto.request.RegisterRequest;
 import com.buildflow.erp.domain.auth.dto.response.AuthResponse;
 import com.buildflow.erp.domain.auth.entity.User;
+import com.buildflow.erp.domain.auth.entity.UserStatus;
 import com.buildflow.erp.domain.auth.repository.UserRepository;
 import com.buildflow.erp.security.JwtService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 @RequiredArgsConstructor
@@ -34,7 +38,13 @@ public class AuthServiceImpl implements AuthService {
         user.setEmail(request.email());
         user.setPasswordHash(passwordEncoder.encode(request.password()));
         user.setRole(request.role());
+        user.setStatus(request.role().requiresApproval() ? UserStatus.PENDING : UserStatus.APPROVED);
+
         userRepository.save(user);
+
+        if (user.getStatus() == UserStatus.PENDING) {
+            return new AuthResponse(null, user.getEmail(), user.getRole().name());
+        }
 
         String token = jwtService.generateToken(user.getEmail(), user.getRole().name());
         return new AuthResponse(token, user.getEmail(), user.getRole().name());
@@ -42,8 +52,12 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public AuthResponse login(LoginRequest request) {
-        authenticationManager.authenticate(
+        try {
+            authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.email(), request.password()));
+        } catch (DisabledException ex) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Votre compte est en attente d'approbation");
+        }
 
         User user = userRepository.findByEmail(request.email())
                 .orElseThrow(() -> new IllegalStateException("Authenticated user could not be reloaded"));
