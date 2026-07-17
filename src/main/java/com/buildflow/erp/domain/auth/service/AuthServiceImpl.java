@@ -1,6 +1,9 @@
 package com.buildflow.erp.domain.auth.service;
 
 import com.buildflow.erp.common.exception.ConflictException;
+import com.buildflow.erp.domain.auth.dto.request.ChangeEmailRequest;
+import com.buildflow.erp.domain.auth.dto.request.ChangePasswordRequest;
+import com.buildflow.erp.domain.auth.dto.request.DeleteAccountRequest;
 import com.buildflow.erp.domain.auth.dto.request.LoginRequest;
 import com.buildflow.erp.domain.auth.dto.request.RegisterRequest;
 import com.buildflow.erp.domain.auth.dto.response.AuthResponse;
@@ -64,5 +67,53 @@ public class AuthServiceImpl implements AuthService {
 
         String token = jwtService.generateToken(user.getEmail(), user.getRole().name());
         return new AuthResponse(token, user.getEmail(), user.getRole().name());
+    }
+
+    @Override
+    @Transactional
+    public AuthResponse changeEmail(String currentEmail, ChangeEmailRequest request) {
+        User user = userRepository.findByEmail(currentEmail)
+                .orElseThrow(() -> new IllegalStateException("Authenticated user could not be reloaded"));
+
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Current password is incorrect");
+        }
+
+        if (!request.newEmail().equalsIgnoreCase(user.getEmail()) && userRepository.existsByEmail(request.newEmail())) {
+            throw new ConflictException("An account with this email already exists");
+        }
+
+        user.setEmail(request.newEmail());
+        userRepository.save(user);
+
+        String token = jwtService.generateToken(user.getEmail(), user.getRole().name());
+        return new AuthResponse(token, user.getEmail(), user.getRole().name());
+    }
+
+    @Override
+    @Transactional
+    public void changePassword(String currentEmail, ChangePasswordRequest request) {
+        User user = userRepository.findByEmail(currentEmail)
+                .orElseThrow(() -> new IllegalStateException("Authenticated user could not be reloaded"));
+
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Current password is incorrect");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        userRepository.save(user);
+    }
+
+    @Override
+    @Transactional
+    public void deleteAccount(String currentEmail, DeleteAccountRequest request) {
+        User user = userRepository.findByEmail(currentEmail)
+                .orElseThrow(() -> new IllegalStateException("Authenticated user could not be reloaded"));
+
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Current password is incorrect");
+        }
+
+        userRepository.delete(user);
     }
 }
