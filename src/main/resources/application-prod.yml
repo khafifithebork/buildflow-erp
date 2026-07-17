@@ -1,0 +1,12 @@
+# Activated in the deployed container (see docker-compose.yml:
+# SPRING_PROFILES_ACTIVE=prod). Locally / in dev, the defaults in
+# application.yml still apply — Swagger and full SQL logging stay on there.
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+spring:
+  jpa:
+    show-sql: false

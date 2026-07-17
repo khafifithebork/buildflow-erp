@@ -11,6 +11,9 @@ import com.buildflow.erp.domain.referentiel.mapper.JalonMapper;
 import com.buildflow.erp.domain.referentiel.repository.ChantierRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import com.buildflow.erp.domain.tresorerie.entity.Caisse;
+import com.buildflow.erp.domain.tresorerie.repository.CaisseRepository;
+import java.math.BigDecimal;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.UUID;
@@ -22,6 +25,7 @@ public class ChantierServiceImpl implements ChantierService {
     private final ChantierRepository chantierRepository;
     private final ChantierMapper chantierMapper;
     private final JalonMapper jalonMapper;
+    private final CaisseRepository caisseRepository;
 
     @Override
     @Transactional
@@ -42,6 +46,16 @@ public class ChantierServiceImpl implements ChantierService {
         }
 
         Chantier saved = chantierRepository.save(chantier);
+
+        Caisse caisse = new Caisse();
+        caisse.setCode("CAISSE-" + saved.getCode());
+        caisse.setLibelle("Caisse " + saved.getNom());
+        caisse.setChantier(saved);
+        caisse.setSolde(BigDecimal.ZERO);
+        caisse.setSeuilMinimum(BigDecimal.ZERO);
+
+        caisseRepository.save(caisse);
+
         return chantierMapper.toResponse(saved);
     }
 

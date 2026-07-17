@@ -10,6 +10,7 @@ import com.buildflow.erp.domain.soustraitance.entity.PaiementSousTraitant;
 import com.buildflow.erp.domain.soustraitance.repository.PaiementSousTraitantRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -26,6 +27,7 @@ public class ComptabiliteServiceImpl implements ComptabiliteService {
     private final PaiementSousTraitantRepository paiementSousTraitantRepository;
 
     @Override
+    @Transactional(readOnly = true)
     public List<EcritureComptableResponse> listEcritures() {
         List<EcritureComptableResponse> ecritures = new ArrayList<>();
 
