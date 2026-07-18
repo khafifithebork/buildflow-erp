@@ -19,21 +19,25 @@ public class UserAdminController {
 
     private final UserAdminService userAdminService;
 
+    // FINANCE is allowed onto these endpoints so it can action pending FINANCE
+    // signups; the exact who-can-approve-whom matrix (incl. FINANCE-only-approves-
+    // FINANCE, and RH/PM cannot touch FINANCE) is enforced in Role.canApprove and
+    // re-checked in the service layer.
     @GetMapping("/pending")
-    @PreAuthorize("hasAnyRole('ADMIN', 'DIRECTEUR', 'RH', 'PM')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DIRECTEUR', 'RH', 'PM', 'FINANCE')")
     public ApiResponse<List<PendingUserResponse>> pending(@AuthenticationPrincipal UserPrincipal principal) {
         return ApiResponse.success(userAdminService.listApprovableFor(principal.getUser().getRole()));
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAnyRole('ADMIN', 'DIRECTEUR', 'RH', 'PM')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DIRECTEUR', 'RH', 'PM', 'FINANCE')")
     public ApiResponse<Void> approve(@PathVariable UUID id, @AuthenticationPrincipal UserPrincipal principal) {
         userAdminService.approve(id, principal.getUser().getRole());
         return ApiResponse.success(null);
     }
 
     @PostMapping("/{id}/reject")
-    @PreAuthorize("hasAnyRole('ADMIN', 'DIRECTEUR', 'RH', 'PM')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DIRECTEUR', 'RH', 'PM', 'FINANCE')")
     public ApiResponse<Void> reject(@PathVariable UUID id, @AuthenticationPrincipal UserPrincipal principal) {
         userAdminService.reject(id, principal.getUser().getRole());
         return ApiResponse.success(null);

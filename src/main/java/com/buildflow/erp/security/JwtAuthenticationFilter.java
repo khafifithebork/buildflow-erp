@@ -1,5 +1,6 @@
 package com.buildflow.erp.security;
 
+import com.buildflow.erp.domain.auth.repository.RevokedTokenRepository;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -21,6 +22,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final CustomUserDetailsService userDetailsService;
+    private final RevokedTokenRepository revokedTokenRepository;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
@@ -40,7 +42,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 UserDetails userDetails = userDetailsService.loadUserByUsername(email);
 
-                if (jwtService.isTokenValid(token, email)) {
+                String jti = jwtService.extractJti(token);
+                boolean revoked = jti != null && revokedTokenRepository.existsByJti(jti);
+
+                if (!revoked && jwtService.isTokenValid(token, email)) {
                     var authToken = new UsernamePasswordAuthenticationToken(
                             userDetails, null, userDetails.getAuthorities());
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
