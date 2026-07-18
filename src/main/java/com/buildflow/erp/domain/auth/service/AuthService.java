@@ -13,4 +13,5 @@ public interface AuthService {
     AuthResponse changeEmail(String currentEmail, ChangeEmailRequest request);
     void changePassword(String currentEmail, ChangePasswordRequest request);
     void deleteAccount(String currentEmail, DeleteAccountRequest request);
+    void logout(String token);
 }

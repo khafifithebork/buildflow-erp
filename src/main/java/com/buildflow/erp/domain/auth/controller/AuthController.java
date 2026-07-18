@@ -36,6 +36,17 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
+    // Requires authentication (only /register and /login are public). Revokes the
+    // presented token server-side so it can't be replayed for the rest of its life.
+    @PostMapping("/logout")
+    public ResponseEntity<ApiResponse<Void>> logout(
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            authService.logout(authHeader.substring(7));
+        }
+        return ResponseEntity.ok(ApiResponse.success(null, "Logged out"));
+    }
+
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<AuthResponse>> me(@AuthenticationPrincipal UserPrincipal principal) {
         User user = principal.getUser();
