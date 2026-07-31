@@ -1,0 +1,27 @@
+# =============================================================================
+# Production Profile — application-prod.yml
+# =============================================================================
+# Activated when SPRING_PROFILES_ACTIVE=prod is set (on Railway).
+#
+# Spring Boot merges this ON TOP of application.yml. Only values that need
+# to DIFFER from development are listed here — everything else is inherited.
+# =============================================================================
+
+spring:
+  jpa:
+    # Don't log every SQL statement in production — it floods the logs
+    # and leaks data structure details if logs are ever exposed.
+    show-sql: false
+
+  # Liquibase still runs on startup (inherited from application.yml).
+  # This is safe: Liquibase changesets are idempotent — if a migration
+  # was already applied, it skips it.
+
+# Disable Swagger / OpenAPI in production.
+# Leaving API documentation publicly accessible lets attackers
+# enumerate every endpoint, parameter, and data model for free.
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
