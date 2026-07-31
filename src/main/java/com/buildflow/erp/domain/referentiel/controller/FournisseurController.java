@@ -21,6 +21,9 @@ public class FournisseurController {
 
     private final FournisseurService fournisseurService;
 
+    // Managing suppliers is owned by ADMIN/ACHAT (matches the /dashboard/fournisseurs
+    // page). Reads are also needed by PM, whose purchase-creation form on
+    // /dashboard/achats populates a supplier dropdown from these endpoints.
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'ACHAT')")
     public ResponseEntity<ApiResponse<FournisseurResponse>> create(
@@ -30,11 +33,13 @@ public class FournisseurController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ACHAT', 'PM')")
     public ResponseEntity<ApiResponse<FournisseurResponse>> findById(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success(fournisseurService.findById(id)));
     }
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'ACHAT', 'PM')")
     public ResponseEntity<ApiResponse<List<FournisseurResponse>>> findAll() {
         return ResponseEntity.ok(ApiResponse.success(fournisseurService.findAll()));
     }

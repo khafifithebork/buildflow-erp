@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # =============================================================================
 # Production Profile — application-prod.yml
 # =============================================================================
@@ -20,8 +21,20 @@ spring:
 # Disable Swagger / OpenAPI in production.
 # Leaving API documentation publicly accessible lets attackers
 # enumerate every endpoint, parameter, and data model for free.
+=======
+# Activated in the deployed container (see docker-compose.yml:
+# SPRING_PROFILES_ACTIVE=prod). Locally / in dev, the defaults in
+# application.yml still apply — Swagger and full SQL logging stay on there.
+>>>>>>> 94fdaae9c66780c005a8cd9d74ca69d4eb4f2f44
 springdoc:
   api-docs:
     enabled: false
   swagger-ui:
     enabled: false
+<<<<<<< HEAD
+=======
+
+spring:
+  jpa:
+    show-sql: false
+>>>>>>> 94fdaae9c66780c005a8cd9d74ca69d4eb4f2f44

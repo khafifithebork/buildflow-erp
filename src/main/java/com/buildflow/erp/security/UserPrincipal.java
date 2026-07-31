@@ -4,6 +4,7 @@ import com.buildflow.erp.domain.auth.entity.User;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
+import com.buildflow.erp.domain.auth.entity.UserStatus;
 
 import java.util.Collection;
 import java.util.List;
@@ -33,5 +34,10 @@ public class UserPrincipal implements UserDetails {
     @Override
     public String getUsername() {
         return user.getEmail();
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return user.getStatus() == UserStatus.APPROVED;
     }
 }

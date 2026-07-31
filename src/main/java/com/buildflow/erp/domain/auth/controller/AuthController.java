@@ -1,6 +1,9 @@
 package com.buildflow.erp.domain.auth.controller;
 
 import com.buildflow.erp.common.dto.ApiResponse;
+import com.buildflow.erp.domain.auth.dto.request.ChangeEmailRequest;
+import com.buildflow.erp.domain.auth.dto.request.ChangePasswordRequest;
+import com.buildflow.erp.domain.auth.dto.request.DeleteAccountRequest;
 import com.buildflow.erp.domain.auth.dto.request.LoginRequest;
 import com.buildflow.erp.domain.auth.dto.request.RegisterRequest;
 import com.buildflow.erp.domain.auth.dto.response.AuthResponse;
@@ -33,10 +36,45 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
+    // Requires authentication (only /register and /login are public). Revokes the
+    // presented token server-side so it can't be replayed for the rest of its life.
+    @PostMapping("/logout")
+    public ResponseEntity<ApiResponse<Void>> logout(
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            authService.logout(authHeader.substring(7));
+        }
+        return ResponseEntity.ok(ApiResponse.success(null, "Logged out"));
+    }
+
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<AuthResponse>> me(@AuthenticationPrincipal UserPrincipal principal) {
         User user = principal.getUser();
         return ResponseEntity.ok(ApiResponse.success(
                 new AuthResponse(null, user.getEmail(), user.getRole().name())));
+    }
+
+    @PatchMapping("/me/email")
+    public ResponseEntity<ApiResponse<AuthResponse>> changeEmail(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @Valid @RequestBody ChangeEmailRequest request) {
+        AuthResponse response = authService.changeEmail(principal.getUser().getEmail(), request);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    @PatchMapping("/me/password")
+    public ResponseEntity<ApiResponse<Void>> changePassword(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @Valid @RequestBody ChangePasswordRequest request) {
+        authService.changePassword(principal.getUser().getEmail(), request);
+        return ResponseEntity.ok(ApiResponse.success(null, "Password updated"));
+    }
+
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> deleteAccount(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @Valid @RequestBody DeleteAccountRequest request) {
+        authService.deleteAccount(principal.getUser().getEmail(), request);
+        return ResponseEntity.noContent().build();
     }
 }

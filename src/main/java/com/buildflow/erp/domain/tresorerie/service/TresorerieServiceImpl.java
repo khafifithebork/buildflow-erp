@@ -96,14 +96,41 @@ public class TresorerieServiceImpl implements TresorerieService {
     @Override
     @Transactional
     public void debiterPourAchat(UUID chantierId, BigDecimal montant, String achatRef) {
-        List<Caisse> caisses = caisseRepository.findByChantierId(chantierId);
-        if (caisses.isEmpty()) {
-            throw new BusinessRuleException("No caisse found for chantier " + chantierId);
-        }
-        Caisse caisse = caisses.get(0);
-    }
 
+        Caisse caisse = getOrCreateCaisse(chantierId);
+
+        applyTransaction(
+                caisse,
+                TypeTransaction.DEBIT,
+                montant,
+                "Paiement achat",
+                achatRef
+        );
+    }
     // ── Private ────────────────────────────────────────────────────
+
+    private Caisse getOrCreateCaisse(UUID chantierId) {
+
+        return caisseRepository.findByChantierId(chantierId)
+                .stream()
+                .findFirst()
+                .orElseGet(() -> {
+
+                    Chantier chantier = chantierRepository.findById(chantierId)
+                            .orElseThrow(() ->
+                                    new ResourceNotFoundException("Chantier", chantierId));
+
+                    Caisse caisse = new Caisse();
+
+                    caisse.setCode("CAISSE-" + chantier.getCode());
+                    caisse.setLibelle("Caisse " + chantier.getNom());
+                    caisse.setChantier(chantier);
+                    caisse.setSolde(BigDecimal.ZERO);
+                    caisse.setSeuilMinimum(BigDecimal.ZERO);
+
+                    return caisseRepository.save(caisse);
+                });
+    }
 
     private void applyTransaction(Caisse caisse, TypeTransaction type, BigDecimal montant,
                                   String motif, String referenceDocument) {
