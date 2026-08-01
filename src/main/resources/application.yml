@@ -31,4 +31,6 @@ jwt:
 
 app:
   cors:
-    allowed-origin: https://buildflow-ochre-nine.vercel.app
+    allowed-origin:
+      - https://buildflow-ochre-nine.vercel.app
+      - http://localhost:3000
