@@ -8,6 +8,8 @@ import java.util.UUID;
 
 public interface ArticleService {
     ArticleResponse create(CreateArticleRequest request);
+    ArticleResponse update(UUID id, CreateArticleRequest request);
+    void delete(UUID id);
     ArticleResponse findById(UUID id);
     PageResponse<ArticleResponse> findAll(Pageable pageable);
 }

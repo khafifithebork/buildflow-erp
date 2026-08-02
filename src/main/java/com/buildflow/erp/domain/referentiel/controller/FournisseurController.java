@@ -32,6 +32,20 @@ public class FournisseurController {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(response));
     }
 
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ACHAT')")
+    public ResponseEntity<ApiResponse<FournisseurResponse>> update(
+            @PathVariable UUID id, @Valid @RequestBody CreateFournisseurRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(fournisseurService.update(id, request)));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ACHAT')")
+    public ResponseEntity<Void> delete(@PathVariable UUID id) {
+        fournisseurService.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'ACHAT', 'PM')")
     public ResponseEntity<ApiResponse<FournisseurResponse>> findById(@PathVariable UUID id) {

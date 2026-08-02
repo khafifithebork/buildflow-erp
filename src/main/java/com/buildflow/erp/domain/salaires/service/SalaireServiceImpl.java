@@ -3,14 +3,18 @@ package com.buildflow.erp.domain.salaires.service;
 import com.buildflow.erp.common.exception.BusinessRuleException;
 import com.buildflow.erp.common.exception.ConflictException;
 import com.buildflow.erp.common.exception.ResourceNotFoundException;
+import com.buildflow.erp.domain.bpu.entity.BpuLigne;
+import com.buildflow.erp.domain.bpu.repository.BpuLigneRepository;
 import com.buildflow.erp.domain.referentiel.entity.Chantier;
 import com.buildflow.erp.domain.referentiel.entity.Employe;
 import com.buildflow.erp.domain.referentiel.repository.ChantierRepository;
 import com.buildflow.erp.domain.referentiel.repository.EmployeRepository;
 import com.buildflow.erp.domain.salaires.dto.request.CreateFichePaieRequest;
+import com.buildflow.erp.domain.salaires.dto.request.PayerFichePaieRequest;
 import com.buildflow.erp.domain.salaires.dto.response.FichePaieResponse;
 import com.buildflow.erp.domain.salaires.entity.FichePaie;
 import com.buildflow.erp.domain.salaires.entity.FichePaieStatut;
+import com.buildflow.erp.domain.salaires.entity.ModePaiement;
 import com.buildflow.erp.domain.salaires.mapper.FichePaieMapper;
 import com.buildflow.erp.domain.salaires.repository.FichePaieRepository;
 import com.buildflow.erp.domain.tresorerie.service.TresorerieService;
@@ -31,6 +35,7 @@ public class SalaireServiceImpl implements SalaireService {
     private final FichePaieRepository fichePaieRepository;
     private final EmployeRepository employeRepository;
     private final ChantierRepository chantierRepository;
+    private final BpuLigneRepository bpuLigneRepository;
     private final FichePaieMapper fichePaieMapper;
     private final TresorerieService tresorerieService;
 
@@ -66,6 +71,12 @@ public class SalaireServiceImpl implements SalaireService {
         fiche.setAvance(orZero(request.avance()));
         fiche.setDeductionsCnss(orZero(request.deductionsCnss()));
         fiche.setDeductionsIr(orZero(request.deductionsIr()));
+
+        if (request.bpuLigneId() != null) {
+            BpuLigne bpuLigne = bpuLigneRepository.findById(request.bpuLigneId())
+                    .orElseThrow(() -> new ResourceNotFoundException("BpuLigne", request.bpuLigneId()));
+            fiche.setBpuLigne(bpuLigne);
+        }
 
         // Compute net à payer server-side
         fiche.setNetAPayer(computeNet(fiche));
@@ -112,20 +123,25 @@ public class SalaireServiceImpl implements SalaireService {
 
     @Override
     @Transactional
-    public FichePaieResponse payer(UUID id) {
+    public FichePaieResponse payer(UUID id, PayerFichePaieRequest request) {
         FichePaie fiche = findEntity(id);
         assertStatut(fiche, FichePaieStatut.VALIDEE, "PAYER");
 
         fiche.setStatut(FichePaieStatut.PAYEE);
+        fiche.setModePaiement(request.modePaiement());
 
-        // CROSS-DOMAIN SIDE EFFECT: Debit the chantier's caisse
-        tresorerieService.debiterPourAchat(
-                fiche.getChantier().getId(),
-                fiche.getNetAPayer(),
-                "SAL-" + fiche.getReference());
+        // CROSS-DOMAIN SIDE EFFECT: only debit the chantier's caisse when this
+        // salary is actually paid out of it — a VIREMENT is a bank transfer and
+        // must not touch the caisse balance.
+        if (request.modePaiement() == ModePaiement.CAISSE) {
+            tresorerieService.debiterPourSalaire(
+                    fiche.getChantier().getId(),
+                    fiche.getNetAPayer(),
+                    "SAL-" + fiche.getReference());
+        }
 
-        log.info("Fiche de paie {} paid: {} MAD for {} ({})",
-                fiche.getReference(), fiche.getNetAPayer(),
+        log.info("Fiche de paie {} paid via {}: {} MAD for {} ({})",
+                fiche.getReference(), request.modePaiement(), fiche.getNetAPayer(),
                 fiche.getEmploye().getMatricule(), fiche.getPeriode());
 
         return fichePaieMapper.toResponse(fichePaieRepository.save(fiche));

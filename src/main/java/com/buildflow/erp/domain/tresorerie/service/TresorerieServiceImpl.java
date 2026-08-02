@@ -3,6 +3,8 @@ package com.buildflow.erp.domain.tresorerie.service;
 import com.buildflow.erp.common.exception.BusinessRuleException;
 import com.buildflow.erp.common.exception.ConflictException;
 import com.buildflow.erp.common.exception.ResourceNotFoundException;
+import com.buildflow.erp.domain.bpu.entity.BpuLigne;
+import com.buildflow.erp.domain.bpu.repository.BpuLigneRepository;
 import com.buildflow.erp.domain.referentiel.entity.Chantier;
 import com.buildflow.erp.domain.referentiel.repository.ChantierRepository;
 import com.buildflow.erp.domain.tresorerie.dto.request.CreateCaisseRequest;
@@ -32,6 +34,7 @@ public class TresorerieServiceImpl implements TresorerieService {
     private final CaisseRepository caisseRepository;
     private final CaisseTransactionRepository transactionRepository;
     private final ChantierRepository chantierRepository;
+    private final BpuLigneRepository bpuLigneRepository;
     private final CaisseMapper caisseMapper;
 
     @Override
@@ -75,8 +78,14 @@ public class TresorerieServiceImpl implements TresorerieService {
         Caisse caisse = caisseRepository.findById(caisseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Caisse", caisseId));
 
+        BpuLigne bpuLigne = null;
+        if (request.bpuLigneId() != null) {
+            bpuLigne = bpuLigneRepository.findById(request.bpuLigneId())
+                    .orElseThrow(() -> new ResourceNotFoundException("BpuLigne", request.bpuLigneId()));
+        }
+
         applyTransaction(caisse, request.typeTransaction(), request.montant(),
-                request.motif(), request.referenceDocument());
+                request.motif(), request.referenceDocument(), bpuLigne);
 
         List<CaisseTransaction> txns = transactionRepository.findByCaisseIdOrderByCreatedAtDesc(caisseId);
         return caisseMapper.toTransactionResponse(txns.getFirst());
@@ -104,7 +113,24 @@ public class TresorerieServiceImpl implements TresorerieService {
                 TypeTransaction.DEBIT,
                 montant,
                 "Paiement achat",
-                achatRef
+                achatRef,
+                null
+        );
+    }
+
+    @Override
+    @Transactional
+    public void debiterPourSalaire(UUID chantierId, BigDecimal montant, String reference) {
+
+        Caisse caisse = getOrCreateCaisse(chantierId);
+
+        applyTransaction(
+                caisse,
+                TypeTransaction.DEBIT,
+                montant,
+                "Paiement salaire",
+                reference,
+                null
         );
     }
     // ── Private ────────────────────────────────────────────────────
@@ -133,7 +159,7 @@ public class TresorerieServiceImpl implements TresorerieService {
     }
 
     private void applyTransaction(Caisse caisse, TypeTransaction type, BigDecimal montant,
-                                  String motif, String referenceDocument) {
+                                  String motif, String referenceDocument, BpuLigne bpuLigne) {
         if (type == TypeTransaction.DEBIT) {
             BigDecimal newSolde = caisse.getSolde().subtract(montant);
             if (newSolde.compareTo(BigDecimal.ZERO) < 0) {
@@ -160,6 +186,7 @@ public class TresorerieServiceImpl implements TresorerieService {
         txn.setMontant(montant);
         txn.setMotif(motif);
         txn.setReferenceDocument(referenceDocument);
+        txn.setBpuLigne(bpuLigne);
         transactionRepository.save(txn);
     }
 }

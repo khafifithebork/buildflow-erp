@@ -5,6 +5,7 @@ import com.buildflow.erp.domain.referentiel.dto.response.ArticleResponse;
 import com.buildflow.erp.domain.referentiel.entity.Article;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.MappingTarget;
 
 @Mapper(componentModel = "spring")
 public interface ArticleMapper {
@@ -19,4 +20,11 @@ public interface ArticleMapper {
     @Mapping(target = "categorie", ignore = true)
     @Mapping(target = "actif", constant = "true")
     Article toEntity(CreateArticleRequest request);
+
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "updatedAt", ignore = true)
+    @Mapping(target = "categorie", ignore = true)
+    @Mapping(target = "actif", ignore = true)
+    void updateEntityFromRequest(CreateArticleRequest request, @MappingTarget Article article);
 }

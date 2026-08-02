@@ -2,6 +2,7 @@ package com.buildflow.erp.domain.salaires.controller;
 
 import com.buildflow.erp.common.dto.ApiResponse;
 import com.buildflow.erp.domain.salaires.dto.request.CreateFichePaieRequest;
+import com.buildflow.erp.domain.salaires.dto.request.PayerFichePaieRequest;
 import com.buildflow.erp.domain.salaires.dto.response.FichePaieResponse;
 import com.buildflow.erp.domain.salaires.service.SalaireService;
 import jakarta.validation.Valid;
@@ -53,7 +54,8 @@ public class SalaireController {
 
     @PatchMapping("/{id}/payer")
     @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE')")
-    public ResponseEntity<ApiResponse<FichePaieResponse>> payer(@PathVariable UUID id) {
-        return ResponseEntity.ok(ApiResponse.success(salaireService.payer(id)));
+    public ResponseEntity<ApiResponse<FichePaieResponse>> payer(
+            @PathVariable UUID id, @Valid @RequestBody PayerFichePaieRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(salaireService.payer(id, request)));
     }
 }

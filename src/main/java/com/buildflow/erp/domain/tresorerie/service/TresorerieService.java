@@ -26,4 +26,10 @@ public interface TresorerieService {
      * Debits the caisse associated with the achat's chantier.
      */
     void debiterPourAchat(UUID chantierId, BigDecimal montant, String achatRef);
+
+    /**
+     * Cross-domain method: called by SalaireServiceImpl when a FichePaie is paid
+     * with modePaiement=CAISSE. Debits the caisse associated with the fiche's chantier.
+     */
+    void debiterPourSalaire(UUID chantierId, BigDecimal montant, String reference);
 }

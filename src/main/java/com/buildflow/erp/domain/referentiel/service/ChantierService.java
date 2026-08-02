@@ -6,6 +6,9 @@ import java.util.UUID;
 
 public interface ChantierService {
     ChantierResponse create(CreateChantierRequest request);
+    ChantierResponse update(UUID id, CreateChantierRequest request);
+    ChantierResponse demarrer(UUID id);
+    void delete(UUID id);
     ChantierResponse findById(UUID id);
     List<ChantierResponse> findAll();
 }

@@ -37,6 +37,33 @@ public class SousTraitantServiceImpl implements SousTraitantService {
     }
 
     @Override
+    @Transactional
+    public SousTraitantResponse update(UUID id, CreateSousTraitantRequest request) {
+        SousTraitant sousTraitant = sousTraitantRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("SousTraitant", id));
+
+        if (sousTraitantRepository.existsByCodeAndIdNot(request.code(), id)) {
+            throw new ConflictException("A sous-traitant with code '" + request.code() + "' already exists");
+        }
+        if (sousTraitantRepository.existsByIceAndIdNot(request.ice(), id)) {
+            throw new ConflictException("A sous-traitant with ICE '" + request.ice() + "' already exists");
+        }
+
+        sousTraitantMapper.updateEntityFromRequest(request, sousTraitant);
+
+        return sousTraitantMapper.toResponse(sousTraitantRepository.save(sousTraitant));
+    }
+
+    @Override
+    @Transactional
+    public void delete(UUID id) {
+        if (!sousTraitantRepository.existsById(id)) {
+            throw new ResourceNotFoundException("SousTraitant", id);
+        }
+        sousTraitantRepository.deleteById(id);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public SousTraitantResponse findById(UUID id) {
         SousTraitant sousTraitant = sousTraitantRepository.findById(id)

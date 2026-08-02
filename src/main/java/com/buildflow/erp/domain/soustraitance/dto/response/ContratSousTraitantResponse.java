@@ -1,6 +1,7 @@
 package com.buildflow.erp.domain.soustraitance.dto.response;
 
 import com.buildflow.erp.domain.soustraitance.entity.ContratStatut;
+import com.buildflow.erp.domain.soustraitance.entity.DossierStatut;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -21,5 +22,10 @@ public record ContratSousTraitantResponse(
         BigDecimal resteAPayer,
         LocalDate dateDebut,
         LocalDate dateFin,
-        ContratStatut statut
+        ContratStatut statut,
+        BigDecimal avanceDemandeeHt,
+        BigDecimal retenueGarantieHt,
+        BigDecimal montantRealiseHt,
+        DossierStatut dossierStatut,
+        String bpuLigneRef
 ) {}

@@ -44,6 +44,34 @@ public class ArticleServiceImpl implements ArticleService {
     }
 
     @Override
+    @Transactional
+    public ArticleResponse update(UUID id, CreateArticleRequest request) {
+        Article article = articleRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Article", id));
+
+        if (articleRepository.existsByCodeAndIdNot(request.code(), id)) {
+            throw new ConflictException("An article with code '" + request.code() + "' already exists");
+        }
+
+        CategorieArticle categorie = categorieArticleRepository.findById(request.categorieId())
+                .orElseThrow(() -> new ResourceNotFoundException("CategorieArticle", request.categorieId()));
+
+        articleMapper.updateEntityFromRequest(request, article);
+        article.setCategorie(categorie);
+
+        return articleMapper.toResponse(articleRepository.save(article));
+    }
+
+    @Override
+    @Transactional
+    public void delete(UUID id) {
+        if (!articleRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Article", id);
+        }
+        articleRepository.deleteById(id);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public ArticleResponse findById(UUID id) {
         Article article = articleRepository.findById(id)

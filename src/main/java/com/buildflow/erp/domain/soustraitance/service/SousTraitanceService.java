@@ -1,7 +1,10 @@
 package com.buildflow.erp.domain.soustraitance.service;
 
+import com.buildflow.erp.domain.soustraitance.dto.request.AvanceRequest;
 import com.buildflow.erp.domain.soustraitance.dto.request.CreateContratRequest;
 import com.buildflow.erp.domain.soustraitance.dto.request.CreatePaiementRequest;
+import com.buildflow.erp.domain.soustraitance.dto.request.RetenueRequest;
+import com.buildflow.erp.domain.soustraitance.dto.request.TravauxRequest;
 import com.buildflow.erp.domain.soustraitance.dto.response.ContratSousTraitantResponse;
 import com.buildflow.erp.domain.soustraitance.dto.response.PaiementSousTraitantResponse;
 
@@ -20,6 +23,15 @@ public interface SousTraitanceService {
 
     /** Terminate a contract: EN_COURS → TERMINE */
     ContratSousTraitantResponse terminerContrat(UUID id);
+
+    /** Field ops (PM): record a cash advance request against the contract */
+    ContratSousTraitantResponse demanderAvance(UUID id, AvanceRequest request);
+
+    /** Field ops (PM): validate the amount of work actually completed */
+    ContratSousTraitantResponse validerTravaux(UUID id, TravauxRequest request);
+
+    /** Finance: set the guarantee retention and dossier completeness status */
+    ContratSousTraitantResponse ajusterRetenue(UUID id, RetenueRequest request);
 
     /** Create a payment against a contract */
     PaiementSousTraitantResponse createPaiement(UUID contratId, CreatePaiementRequest request);

@@ -2,11 +2,14 @@ package com.buildflow.erp.domain.stock.controller;
 
 import com.buildflow.erp.common.dto.ApiResponse;
 import com.buildflow.erp.common.dto.PageResponse;
+import com.buildflow.erp.domain.stock.dto.request.CreateMouvementStockRequest;
 import com.buildflow.erp.domain.stock.dto.response.StockArticleResponse;
 import com.buildflow.erp.domain.stock.service.StockService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -26,5 +29,13 @@ public class StockController {
             @PathVariable UUID chantierId,
             @PageableDefault(size = 20, sort = "article.designation") Pageable pageable) {
         return ResponseEntity.ok(ApiResponse.success(stockService.getStockByChantier(chantierId, pageable)));
+    }
+
+    @PostMapping("/mouvements")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MAGASINIER', 'PM')")
+    public ResponseEntity<ApiResponse<StockArticleResponse>> createMouvement(
+            @Valid @RequestBody CreateMouvementStockRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(stockService.createMouvement(request)));
     }
 }

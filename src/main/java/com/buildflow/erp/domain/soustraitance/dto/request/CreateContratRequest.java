@@ -15,5 +15,6 @@ public record CreateContratRequest(
         @NotBlank String objet,
         @NotNull @DecimalMin("0.01") BigDecimal montantHt,
         @NotNull LocalDate dateDebut,
-        @NotNull LocalDate dateFin
+        @NotNull LocalDate dateFin,
+        UUID bpuLigneId
 ) {}

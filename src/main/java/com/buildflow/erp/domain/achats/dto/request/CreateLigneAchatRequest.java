@@ -8,5 +8,6 @@ import java.util.UUID;
 public record CreateLigneAchatRequest(
         @NotNull UUID articleId,
         @NotNull @DecimalMin("0.001") BigDecimal quantite,
-        @NotNull @DecimalMin("0.0") BigDecimal prixUnitaire
+        @NotNull @DecimalMin("0.0") BigDecimal prixUnitaire,
+        UUID bpuLigneId
 ) {}

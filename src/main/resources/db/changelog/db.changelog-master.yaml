@@ -59,3 +59,30 @@ databaseChangeLog:
   - include:
       file: db/changelog/changes/020-create-revoked-tokens-table.sql
       relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/021-create-bpu-lignes-table.sql
+      relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/022-add-bpu-ligne-id-to-lignes-achat.sql
+      relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/023-add-bpu-ligne-id-to-caisse-transactions.sql
+      relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/024-add-bpu-ligne-id-to-fiches-paie.sql
+      relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/025-add-bpu-ligne-id-to-contrats-sous-traitant.sql
+      relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/026-create-attachements-table.sql
+      relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/027-create-attachement-lignes-table.sql
+      relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/028-add-mode-paiement-to-fiches-paie.sql
+      relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/029-add-advanced-fields-to-contrats-sous-traitant.sql
+      relativeToChangelogFile: false

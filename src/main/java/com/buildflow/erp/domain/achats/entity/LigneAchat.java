@@ -1,6 +1,7 @@
 package com.buildflow.erp.domain.achats.entity;
 
 import com.buildflow.erp.common.entity.BaseEntity;
+import com.buildflow.erp.domain.bpu.entity.BpuLigne;
 import com.buildflow.erp.domain.referentiel.entity.Article;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
@@ -39,4 +40,8 @@ public class LigneAchat extends BaseEntity {
 
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal total;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "bpu_ligne_id")
+    private BpuLigne bpuLigne;
 }

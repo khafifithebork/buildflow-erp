@@ -1,6 +1,7 @@
 package com.buildflow.erp.domain.salaires.service;
 
 import com.buildflow.erp.domain.salaires.dto.request.CreateFichePaieRequest;
+import com.buildflow.erp.domain.salaires.dto.request.PayerFichePaieRequest;
 import com.buildflow.erp.domain.salaires.dto.response.FichePaieResponse;
 
 import java.util.List;
@@ -19,6 +20,6 @@ public interface SalaireService {
     /** HR/Manager validates: BROUILLON → VALIDEE */
     FichePaieResponse valider(UUID id);
 
-    /** Finance pays: VALIDEE → PAYEE (triggers caisse debit) */
-    FichePaieResponse payer(UUID id);
+    /** Finance pays: VALIDEE → PAYEE (debits the caisse only when modePaiement=CAISSE) */
+    FichePaieResponse payer(UUID id, PayerFichePaieRequest request);
 }

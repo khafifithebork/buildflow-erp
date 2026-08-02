@@ -1,10 +1,12 @@
 package com.buildflow.erp.domain.referentiel.service;
 
+import com.buildflow.erp.common.exception.BusinessRuleException;
 import com.buildflow.erp.common.exception.ConflictException;
 import com.buildflow.erp.common.exception.ResourceNotFoundException;
 import com.buildflow.erp.domain.referentiel.dto.request.CreateChantierRequest;
 import com.buildflow.erp.domain.referentiel.dto.response.ChantierResponse;
 import com.buildflow.erp.domain.referentiel.entity.Chantier;
+import com.buildflow.erp.domain.referentiel.entity.ChantierStatut;
 import com.buildflow.erp.domain.referentiel.entity.Jalon;
 import com.buildflow.erp.domain.referentiel.mapper.ChantierMapper;
 import com.buildflow.erp.domain.referentiel.mapper.JalonMapper;
@@ -57,6 +59,46 @@ public class ChantierServiceImpl implements ChantierService {
         caisseRepository.save(caisse);
 
         return chantierMapper.toResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public ChantierResponse update(UUID id, CreateChantierRequest request) {
+        Chantier chantier = chantierRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Chantier", id));
+
+        if (chantierRepository.existsByCodeAndIdNot(request.code(), id)) {
+            throw new ConflictException("A chantier with code '" + request.code() + "' already exists");
+        }
+
+        chantierMapper.updateEntityFromRequest(request, chantier);
+
+        return chantierMapper.toResponse(chantierRepository.save(chantier));
+    }
+
+    @Override
+    @Transactional
+    public ChantierResponse demarrer(UUID id) {
+        Chantier chantier = chantierRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Chantier", id));
+
+        if (chantier.getStatut() != ChantierStatut.EN_PREPARATION) {
+            throw new BusinessRuleException(
+                    "Seul un chantier en préparation peut être démarré (statut actuel: " + chantier.getStatut() + ")");
+        }
+
+        chantier.setStatut(ChantierStatut.EN_COURS);
+
+        return chantierMapper.toResponse(chantierRepository.save(chantier));
+    }
+
+    @Override
+    @Transactional
+    public void delete(UUID id) {
+        if (!chantierRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Chantier", id);
+        }
+        chantierRepository.deleteById(id);
     }
 
     @Override

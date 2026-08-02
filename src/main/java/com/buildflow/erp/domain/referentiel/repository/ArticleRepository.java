@@ -9,4 +9,5 @@ import java.util.UUID;
 public interface ArticleRepository extends JpaRepository<Article, UUID> {
     Optional<Article> findByCode(String code);
     boolean existsByCode(String code);
+    boolean existsByCodeAndIdNot(String code, UUID id);
 }
