@@ -15,6 +15,7 @@ public interface SousTraitanceMapper {
     @Mapping(target = "chantierId", source = "chantier.id")
     @Mapping(target = "chantierNom", source = "chantier.nom")
     @Mapping(target = "resteAPayer", expression = "java(contrat.getMontantTtc().subtract(contrat.getMontantPaye()))")
+    @Mapping(target = "bpuLigneRef", source = "bpuLigne.ref")
     ContratSousTraitantResponse toContratResponse(ContratSousTraitant contrat);
 
     PaiementSousTraitantResponse toPaiementResponse(PaiementSousTraitant paiement);

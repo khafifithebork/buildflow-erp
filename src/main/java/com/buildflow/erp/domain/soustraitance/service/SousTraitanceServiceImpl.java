@@ -3,16 +3,22 @@ package com.buildflow.erp.domain.soustraitance.service;
 import com.buildflow.erp.common.exception.BusinessRuleException;
 import com.buildflow.erp.common.exception.ConflictException;
 import com.buildflow.erp.common.exception.ResourceNotFoundException;
+import com.buildflow.erp.domain.bpu.entity.BpuLigne;
+import com.buildflow.erp.domain.bpu.repository.BpuLigneRepository;
 import com.buildflow.erp.domain.referentiel.entity.Chantier;
 import com.buildflow.erp.domain.referentiel.entity.SousTraitant;
 import com.buildflow.erp.domain.referentiel.repository.ChantierRepository;
 import com.buildflow.erp.domain.referentiel.repository.SousTraitantRepository;
+import com.buildflow.erp.domain.soustraitance.dto.request.AvanceRequest;
 import com.buildflow.erp.domain.soustraitance.dto.request.CreateContratRequest;
 import com.buildflow.erp.domain.soustraitance.dto.request.CreatePaiementRequest;
+import com.buildflow.erp.domain.soustraitance.dto.request.RetenueRequest;
+import com.buildflow.erp.domain.soustraitance.dto.request.TravauxRequest;
 import com.buildflow.erp.domain.soustraitance.dto.response.ContratSousTraitantResponse;
 import com.buildflow.erp.domain.soustraitance.dto.response.PaiementSousTraitantResponse;
 import com.buildflow.erp.domain.soustraitance.entity.ContratSousTraitant;
 import com.buildflow.erp.domain.soustraitance.entity.ContratStatut;
+import com.buildflow.erp.domain.soustraitance.entity.DossierStatut;
 import com.buildflow.erp.domain.soustraitance.entity.PaiementSousTraitant;
 import com.buildflow.erp.domain.soustraitance.entity.PaiementStatut;
 import com.buildflow.erp.domain.soustraitance.mapper.SousTraitanceMapper;
@@ -39,6 +45,7 @@ public class SousTraitanceServiceImpl implements SousTraitanceService {
     private final PaiementSousTraitantRepository paiementRepository;
     private final SousTraitantRepository sousTraitantRepository;
     private final ChantierRepository chantierRepository;
+    private final BpuLigneRepository bpuLigneRepository;
     private final SousTraitanceMapper mapper;
     private final TresorerieService tresorerieService;
 
@@ -72,6 +79,12 @@ public class SousTraitanceServiceImpl implements SousTraitanceService {
 
         contrat.setDateDebut(request.dateDebut());
         contrat.setDateFin(request.dateFin());
+
+        if (request.bpuLigneId() != null) {
+            BpuLigne bpuLigne = bpuLigneRepository.findById(request.bpuLigneId())
+                    .orElseThrow(() -> new ResourceNotFoundException("BpuLigne", request.bpuLigneId()));
+            contrat.setBpuLigne(bpuLigne);
+        }
 
         // Update SousTraitant counter
         st.setNombreContratsActifs(st.getNombreContratsActifs() + 1);
@@ -118,6 +131,42 @@ public class SousTraitanceServiceImpl implements SousTraitanceService {
         sousTraitantRepository.save(st);
 
         log.info("Contrat {} terminated for sous-traitant {}", contrat.getReference(), st.getRaisonSociale());
+        return mapper.toContratResponse(contratRepository.save(contrat));
+    }
+
+    @Override
+    @Transactional
+    public ContratSousTraitantResponse demanderAvance(UUID id, AvanceRequest request) {
+        ContratSousTraitant contrat = findContratEntity(id);
+        contrat.setAvanceDemandeeHt(request.avanceDemandeeHt());
+        log.info("Avance demandée pour contrat {}: {} MAD HT", contrat.getReference(), request.avanceDemandeeHt());
+        return mapper.toContratResponse(contratRepository.save(contrat));
+    }
+
+    @Override
+    @Transactional
+    public ContratSousTraitantResponse validerTravaux(UUID id, TravauxRequest request) {
+        ContratSousTraitant contrat = findContratEntity(id);
+
+        if (request.montantRealiseHt().compareTo(contrat.getMontantHt()) > 0) {
+            throw new BusinessRuleException(
+                    "Le montant réalisé (" + request.montantRealiseHt()
+                            + ") ne peut pas dépasser le montant du contrat (" + contrat.getMontantHt() + ")");
+        }
+
+        contrat.setMontantRealiseHt(request.montantRealiseHt());
+        log.info("Travaux validés pour contrat {}: {} MAD HT réalisés", contrat.getReference(), request.montantRealiseHt());
+        return mapper.toContratResponse(contratRepository.save(contrat));
+    }
+
+    @Override
+    @Transactional
+    public ContratSousTraitantResponse ajusterRetenue(UUID id, RetenueRequest request) {
+        ContratSousTraitant contrat = findContratEntity(id);
+        contrat.setRetenueGarantieHt(request.retenueGarantieHt());
+        contrat.setDossierStatut(request.dossierStatut());
+        log.info("Retenue de garantie ajustée pour contrat {}: {} MAD HT, dossier {}",
+                contrat.getReference(), request.retenueGarantieHt(), request.dossierStatut());
         return mapper.toContratResponse(contratRepository.save(contrat));
     }
 
@@ -180,10 +229,16 @@ public class SousTraitanceServiceImpl implements SousTraitanceService {
         PaiementSousTraitant paiement = findPaiementEntity(paiementId);
         assertPaiementStatut(paiement, PaiementStatut.VALIDE, "PAYER");
 
+        ContratSousTraitant contrat = paiement.getContrat();
+
+        if (contrat.getDossierStatut() != DossierStatut.COMPLET) {
+            throw new BusinessRuleException(
+                    "Le dossier administratif du contrat " + contrat.getReference()
+                            + " est incomplet — le paiement ne peut pas être effectué");
+        }
+
         paiement.setStatut(PaiementStatut.PAYE);
         paiement.setDatePaiement(LocalDate.now());
-
-        ContratSousTraitant contrat = paiement.getContrat();
 
         // Update contract paid amount
         contrat.setMontantPaye(contrat.getMontantPaye().add(paiement.getMontant()));

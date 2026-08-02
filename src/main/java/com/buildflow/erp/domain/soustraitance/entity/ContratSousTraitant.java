@@ -1,6 +1,7 @@
 package com.buildflow.erp.domain.soustraitance.entity;
 
 import com.buildflow.erp.common.entity.BaseEntity;
+import com.buildflow.erp.domain.bpu.entity.BpuLigne;
 import com.buildflow.erp.domain.referentiel.entity.Chantier;
 import com.buildflow.erp.domain.referentiel.entity.SousTraitant;
 import jakarta.persistence.*;
@@ -56,6 +57,23 @@ public class ContratSousTraitant extends BaseEntity {
     @Column(nullable = false, length = 20)
     private ContratStatut statut = ContratStatut.EN_COURS;
 
+    @Column(name = "avance_demandee_ht", nullable = false, precision = 15, scale = 2)
+    private BigDecimal avanceDemandeeHt = BigDecimal.ZERO;
+
+    @Column(name = "retenue_garantie_ht", nullable = false, precision = 15, scale = 2)
+    private BigDecimal retenueGarantieHt = BigDecimal.ZERO;
+
+    @Column(name = "montant_realise_ht", nullable = false, precision = 15, scale = 2)
+    private BigDecimal montantRealiseHt = BigDecimal.ZERO;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "dossier_statut", nullable = false, length = 20)
+    private DossierStatut dossierStatut = DossierStatut.INCOMPLET;
+
     @OneToMany(mappedBy = "contrat", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<PaiementSousTraitant> paiements = new ArrayList<>();
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "bpu_ligne_id")
+    private BpuLigne bpuLigne;
 }

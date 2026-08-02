@@ -1,8 +1,11 @@
 package com.buildflow.erp.domain.soustraitance.controller;
 
 import com.buildflow.erp.common.dto.ApiResponse;
+import com.buildflow.erp.domain.soustraitance.dto.request.AvanceRequest;
 import com.buildflow.erp.domain.soustraitance.dto.request.CreateContratRequest;
 import com.buildflow.erp.domain.soustraitance.dto.request.CreatePaiementRequest;
+import com.buildflow.erp.domain.soustraitance.dto.request.RetenueRequest;
+import com.buildflow.erp.domain.soustraitance.dto.request.TravauxRequest;
 import com.buildflow.erp.domain.soustraitance.dto.response.ContratSousTraitantResponse;
 import com.buildflow.erp.domain.soustraitance.dto.response.PaiementSousTraitantResponse;
 import com.buildflow.erp.domain.soustraitance.service.SousTraitanceService;
@@ -34,13 +37,13 @@ public class SousTraitanceController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'DIRECTEUR', 'FINANCE', 'CHEF_CHANTIER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DIRECTEUR', 'FINANCE', 'CHEF_CHANTIER', 'PM')")
     public ResponseEntity<ApiResponse<ContratSousTraitantResponse>> findContratById(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success(sousTraitanceService.findContratById(id)));
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'DIRECTEUR', 'FINANCE')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DIRECTEUR', 'FINANCE', 'PM')")
     public ResponseEntity<ApiResponse<List<ContratSousTraitantResponse>>> findAllContrats(
             @RequestParam(required = false) UUID chantierId) {
         List<ContratSousTraitantResponse> result = (chantierId != null)
@@ -53,6 +56,27 @@ public class SousTraitanceController {
     @PreAuthorize("hasAnyRole('ADMIN', 'DIRECTEUR')")
     public ResponseEntity<ApiResponse<ContratSousTraitantResponse>> terminerContrat(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success(sousTraitanceService.terminerContrat(id)));
+    }
+
+    @PatchMapping("/{id}/avance")
+    @PreAuthorize("hasAnyRole('ADMIN', 'PM')")
+    public ResponseEntity<ApiResponse<ContratSousTraitantResponse>> demanderAvance(
+            @PathVariable UUID id, @Valid @RequestBody AvanceRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(sousTraitanceService.demanderAvance(id, request)));
+    }
+
+    @PatchMapping("/{id}/travaux")
+    @PreAuthorize("hasAnyRole('ADMIN', 'PM')")
+    public ResponseEntity<ApiResponse<ContratSousTraitantResponse>> validerTravaux(
+            @PathVariable UUID id, @Valid @RequestBody TravauxRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(sousTraitanceService.validerTravaux(id, request)));
+    }
+
+    @PatchMapping("/{id}/retenue")
+    @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE')")
+    public ResponseEntity<ApiResponse<ContratSousTraitantResponse>> ajusterRetenue(
+            @PathVariable UUID id, @Valid @RequestBody RetenueRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(sousTraitanceService.ajusterRetenue(id, request)));
     }
 
     // ── Paiements (nested under contrat) ───────────────────────────
