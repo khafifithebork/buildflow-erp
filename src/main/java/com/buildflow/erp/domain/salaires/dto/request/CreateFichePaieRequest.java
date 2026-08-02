@@ -23,5 +23,6 @@ public record CreateFichePaieRequest(
         @DecimalMin("0.00") BigDecimal autresPrimes,
         @DecimalMin("0.00") BigDecimal avance,
         @DecimalMin("0.00") BigDecimal deductionsCnss,
-        @DecimalMin("0.00") BigDecimal deductionsIr
+        @DecimalMin("0.00") BigDecimal deductionsIr,
+        UUID bpuLigneId
 ) {}

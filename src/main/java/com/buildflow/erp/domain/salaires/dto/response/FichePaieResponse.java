@@ -1,6 +1,7 @@
 package com.buildflow.erp.domain.salaires.dto.response;
 
 import com.buildflow.erp.domain.salaires.entity.FichePaieStatut;
+import com.buildflow.erp.domain.salaires.entity.ModePaiement;
 
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -25,5 +26,7 @@ public record FichePaieResponse(
         BigDecimal deductionsCnss,
         BigDecimal deductionsIr,
         BigDecimal netAPayer,
-        FichePaieStatut statut
+        FichePaieStatut statut,
+        ModePaiement modePaiement,
+        String bpuLigneRef
 ) {}

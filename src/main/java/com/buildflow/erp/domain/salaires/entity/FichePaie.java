@@ -1,6 +1,7 @@
 package com.buildflow.erp.domain.salaires.entity;
 
 import com.buildflow.erp.common.entity.BaseEntity;
+import com.buildflow.erp.domain.bpu.entity.BpuLigne;
 import com.buildflow.erp.domain.referentiel.entity.Chantier;
 import com.buildflow.erp.domain.referentiel.entity.Employe;
 import jakarta.persistence.*;
@@ -69,4 +70,12 @@ public class FichePaie extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private FichePaieStatut statut = FichePaieStatut.BROUILLON;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mode_paiement", nullable = false, length = 20)
+    private ModePaiement modePaiement = ModePaiement.CAISSE;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "bpu_ligne_id")
+    private BpuLigne bpuLigne;
 }

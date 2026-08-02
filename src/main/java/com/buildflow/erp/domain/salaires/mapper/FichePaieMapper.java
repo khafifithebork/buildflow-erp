@@ -13,5 +13,6 @@ public interface FichePaieMapper {
     @Mapping(target = "employeMatricule", source = "employe.matricule")
     @Mapping(target = "chantierId", source = "chantier.id")
     @Mapping(target = "chantierNom", source = "chantier.nom")
+    @Mapping(target = "bpuLigneRef", source = "bpuLigne.ref")
     FichePaieResponse toResponse(FichePaie fichePaie);
 }
