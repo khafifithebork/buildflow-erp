@@ -1,8 +1,15 @@
 package com.buildflow.erp.domain.stock.service;
 
 import com.buildflow.erp.common.dto.PageResponse;
+import com.buildflow.erp.common.exception.BusinessRuleException;
+import com.buildflow.erp.common.exception.ResourceNotFoundException;
 import com.buildflow.erp.domain.achats.entity.Achat;
 import com.buildflow.erp.domain.achats.entity.LigneAchat;
+import com.buildflow.erp.domain.referentiel.entity.Article;
+import com.buildflow.erp.domain.referentiel.entity.Chantier;
+import com.buildflow.erp.domain.referentiel.repository.ArticleRepository;
+import com.buildflow.erp.domain.referentiel.repository.ChantierRepository;
+import com.buildflow.erp.domain.stock.dto.request.CreateMouvementStockRequest;
 import com.buildflow.erp.domain.stock.dto.response.StockArticleResponse;
 import com.buildflow.erp.domain.stock.entity.MouvementStock;
 import com.buildflow.erp.domain.stock.entity.StockArticle;
@@ -26,6 +33,8 @@ public class StockServiceImpl implements StockService {
 
     private final StockArticleRepository stockArticleRepository;
     private final MouvementStockRepository mouvementStockRepository;
+    private final ArticleRepository articleRepository;
+    private final ChantierRepository chantierRepository;
     private final StockMapper stockMapper;
 
     @Override
@@ -65,6 +74,52 @@ public class StockServiceImpl implements StockService {
                 stockArticleRepository.findByChantierId(chantierId, pageable)
                         .map(stockMapper::toResponse)
         );
+    }
+
+    @Override
+    @Transactional
+    public StockArticleResponse createMouvement(CreateMouvementStockRequest request) {
+        Article article = articleRepository.findById(request.articleId())
+                .orElseThrow(() -> new ResourceNotFoundException("Article", request.articleId()));
+        Chantier chantier = chantierRepository.findById(request.chantierId())
+                .orElseThrow(() -> new ResourceNotFoundException("Chantier", request.chantierId()));
+
+        if (request.typeMouvement() == TypeMouvement.TRANSFERT) {
+            throw new BusinessRuleException(
+                    "TRANSFERT n'est pas supporté par ce mouvement manuel (nécessite un chantier destination)");
+        }
+
+        StockArticle stock = stockArticleRepository
+                .findByArticleIdAndChantierId(article.getId(), chantier.getId())
+                .orElseGet(() -> {
+                    StockArticle newStock = new StockArticle();
+                    newStock.setArticle(article);
+                    newStock.setChantier(chantier);
+                    return newStock;
+                });
+
+        switch (request.typeMouvement()) {
+            case ENTREE, AJUSTEMENT -> stock.setQuantiteTheorique(stock.getQuantiteTheorique().add(request.quantite()));
+            case SORTIE -> {
+                if (stock.getQuantiteTheorique().compareTo(request.quantite()) < 0) {
+                    throw new BusinessRuleException(
+                            "Quantité insuffisante en stock (disponible: " + stock.getQuantiteTheorique() + ")");
+                }
+                stock.setQuantiteTheorique(stock.getQuantiteTheorique().subtract(request.quantite()));
+            }
+            case TRANSFERT -> throw new BusinessRuleException("unreachable");
+        }
+
+        StockArticle savedStock = stockArticleRepository.save(stock);
+
+        MouvementStock mouvement = new MouvementStock();
+        mouvement.setStockArticle(savedStock);
+        mouvement.setTypeMouvement(request.typeMouvement());
+        mouvement.setQuantite(request.quantite());
+        mouvement.setDocumentRef(request.documentRef());
+        mouvementStockRepository.save(mouvement);
+
+        return stockMapper.toResponse(savedStock);
     }
 
     @Transactional(readOnly = true)
