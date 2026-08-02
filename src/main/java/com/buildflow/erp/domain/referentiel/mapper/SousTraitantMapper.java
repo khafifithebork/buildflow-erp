@@ -5,6 +5,7 @@ import com.buildflow.erp.domain.referentiel.dto.response.SousTraitantResponse;
 import com.buildflow.erp.domain.referentiel.entity.SousTraitant;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.MappingTarget;
 
 @Mapper(componentModel = "spring")
 public interface SousTraitantMapper {
@@ -16,4 +17,11 @@ public interface SousTraitantMapper {
     @Mapping(target = "nombreContratsActifs", ignore = true)
     @Mapping(target = "montantTotalPaye", ignore = true)
     SousTraitant toEntity(CreateSousTraitantRequest request);
+
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "updatedAt", ignore = true)
+    @Mapping(target = "nombreContratsActifs", ignore = true)
+    @Mapping(target = "montantTotalPaye", ignore = true)
+    void updateEntityFromRequest(CreateSousTraitantRequest request, @MappingTarget SousTraitant sousTraitant);
 }

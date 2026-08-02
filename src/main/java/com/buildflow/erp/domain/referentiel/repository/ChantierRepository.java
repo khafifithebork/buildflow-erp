@@ -5,4 +5,5 @@ import java.util.UUID;
 
 public interface ChantierRepository extends JpaRepository<Chantier, UUID> {
     boolean existsByCode(String code);
+    boolean existsByCodeAndIdNot(String code, UUID id);
 }

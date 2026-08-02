@@ -31,6 +31,20 @@ public class ArticleController {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(response));
     }
 
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ACHAT')")
+    public ResponseEntity<ApiResponse<ArticleResponse>> update(
+            @PathVariable UUID id, @Valid @RequestBody CreateArticleRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(articleService.update(id, request)));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ACHAT')")
+    public ResponseEntity<Void> delete(@PathVariable UUID id) {
+        articleService.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<ArticleResponse>> findById(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success(articleService.findById(id)));

@@ -7,4 +7,6 @@ import java.util.UUID;
 public interface SousTraitantRepository extends JpaRepository<SousTraitant, UUID> {
     boolean existsByCode(String code);
     boolean existsByIce(String ice);
+    boolean existsByCodeAndIdNot(String code, UUID id);
+    boolean existsByIceAndIdNot(String ice, UUID id);
 }

@@ -7,6 +7,8 @@ import java.util.UUID;
 
 public interface SousTraitantService {
     SousTraitantResponse create(CreateSousTraitantRequest request);
+    SousTraitantResponse update(UUID id, CreateSousTraitantRequest request);
+    void delete(UUID id);
     SousTraitantResponse findById(UUID id);
     List<SousTraitantResponse> findAll();
 }

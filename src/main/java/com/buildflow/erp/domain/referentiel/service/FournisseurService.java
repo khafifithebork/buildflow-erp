@@ -7,6 +7,8 @@ import java.util.UUID;
 
 public interface FournisseurService {
     FournisseurResponse create(CreateFournisseurRequest request);
+    FournisseurResponse update(UUID id, CreateFournisseurRequest request);
+    void delete(UUID id);
     FournisseurResponse findById(UUID id);
     List<FournisseurResponse> findAll();
 }

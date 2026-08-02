@@ -33,6 +33,30 @@ public class FournisseurServiceImpl implements FournisseurService {
     }
 
     @Override
+    @Transactional
+    public FournisseurResponse update(UUID id, CreateFournisseurRequest request) {
+        Fournisseur fournisseur = fournisseurRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Fournisseur", id));
+
+        if (fournisseurRepository.existsByCodeAndIdNot(request.code(), id)) {
+            throw new ConflictException("A fournisseur with code '" + request.code() + "' already exists");
+        }
+
+        fournisseurMapper.updateEntityFromRequest(request, fournisseur);
+
+        return fournisseurMapper.toResponse(fournisseurRepository.save(fournisseur));
+    }
+
+    @Override
+    @Transactional
+    public void delete(UUID id) {
+        if (!fournisseurRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Fournisseur", id);
+        }
+        fournisseurRepository.deleteById(id);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public FournisseurResponse findById(UUID id) {
         Fournisseur fournisseur = fournisseurRepository.findById(id)

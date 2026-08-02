@@ -29,6 +29,20 @@ public class SousTraitantController {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(response));
     }
 
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'PM', 'ACHAT')")
+    public ResponseEntity<ApiResponse<SousTraitantResponse>> update(
+            @PathVariable UUID id, @Valid @RequestBody CreateSousTraitantRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(sousTraitantService.update(id, request)));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'PM', 'ACHAT')")
+    public ResponseEntity<Void> delete(@PathVariable UUID id) {
+        sousTraitantService.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<SousTraitantResponse>> findById(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success(sousTraitantService.findById(id)));

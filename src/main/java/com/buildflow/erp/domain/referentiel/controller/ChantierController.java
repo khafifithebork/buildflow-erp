@@ -27,6 +27,26 @@ public class ChantierController {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(response));
     }
 
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DIRECTEUR', 'PM', 'CHEF_CHANTIER')")
+    public ResponseEntity<ApiResponse<ChantierResponse>> update(
+            @PathVariable UUID id, @Valid @RequestBody CreateChantierRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(chantierService.update(id, request)));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DIRECTEUR')")
+    public ResponseEntity<Void> delete(@PathVariable UUID id) {
+        chantierService.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/{id}/demarrer")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DIRECTEUR', 'PM', 'CHEF_CHANTIER')")
+    public ResponseEntity<ApiResponse<ChantierResponse>> demarrer(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.success(chantierService.demarrer(id)));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<ChantierResponse>> findById(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success(chantierService.findById(id)));
