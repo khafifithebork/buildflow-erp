@@ -10,6 +10,8 @@ import com.buildflow.erp.domain.achats.entity.AchatStatut;
 import com.buildflow.erp.domain.achats.entity.LigneAchat;
 import com.buildflow.erp.domain.achats.mapper.AchatMapper;
 import com.buildflow.erp.domain.achats.repository.AchatRepository;
+import com.buildflow.erp.domain.bpu.entity.BpuLigne;
+import com.buildflow.erp.domain.bpu.repository.BpuLigneRepository;
 import com.buildflow.erp.domain.referentiel.entity.Article;
 import com.buildflow.erp.domain.referentiel.entity.Chantier;
 import com.buildflow.erp.domain.referentiel.entity.Fournisseur;
@@ -35,6 +37,7 @@ public class AchatServiceImpl implements AchatService {
     private final FournisseurRepository fournisseurRepository;
     private final ChantierRepository chantierRepository;
     private final ArticleRepository articleRepository;
+    private final BpuLigneRepository bpuLigneRepository;
     private final AchatMapper achatMapper;
     private final StockService stockService;
     private final TresorerieService tresorerieService;
@@ -74,6 +77,12 @@ public class AchatServiceImpl implements AchatService {
             ligne.setUnite(article.getUnite());             // Snapshot
             ligne.setQuantite(ligneReq.quantite());
             ligne.setPrixUnitaire(ligneReq.prixUnitaire());
+
+            if (ligneReq.bpuLigneId() != null) {
+                BpuLigne bpuLigne = bpuLigneRepository.findById(ligneReq.bpuLigneId())
+                        .orElseThrow(() -> new ResourceNotFoundException("BpuLigne", ligneReq.bpuLigneId()));
+                ligne.setBpuLigne(bpuLigne);
+            }
 
             BigDecimal ligneTotal = ligneReq.quantite().multiply(ligneReq.prixUnitaire()).setScale(2, RoundingMode.HALF_UP);
             ligne.setTotal(ligneTotal);

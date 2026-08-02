@@ -19,6 +19,7 @@ public interface CaisseMapper {
     @Mapping(target = "dernieresTransactions", source = "transactions")
     CaisseResponse toResponse(Caisse caisse);
 
+    @Mapping(target = "bpuLigneRef", source = "bpuLigne.ref")
     CaisseTransactionResponse toTransactionResponse(CaisseTransaction transaction);
 
     List<CaisseTransactionResponse> toTransactionResponseList(List<CaisseTransaction> transactions);

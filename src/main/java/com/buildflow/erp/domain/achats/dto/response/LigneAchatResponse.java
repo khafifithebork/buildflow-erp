@@ -10,5 +10,6 @@ public record LigneAchatResponse(
         BigDecimal quantite,
         String unite,
         BigDecimal prixUnitaire,
-        BigDecimal total
+        BigDecimal total,
+        String bpuLigneRef
 ) {}

@@ -9,5 +9,6 @@ import org.mapstruct.Mapping;
 public interface LigneAchatMapper {
 
     @Mapping(target = "articleCode", source = "article.code")
+    @Mapping(target = "bpuLigneRef", source = "bpuLigne.ref")
     LigneAchatResponse toResponse(LigneAchat ligne);
 }

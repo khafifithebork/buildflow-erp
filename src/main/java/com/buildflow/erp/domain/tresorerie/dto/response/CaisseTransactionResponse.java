@@ -12,5 +12,6 @@ public record CaisseTransactionResponse(
         BigDecimal montant,
         String motif,
         String referenceDocument,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        String bpuLigneRef
 ) {}

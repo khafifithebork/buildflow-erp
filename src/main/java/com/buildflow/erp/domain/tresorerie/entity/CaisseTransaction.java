@@ -1,6 +1,7 @@
 package com.buildflow.erp.domain.tresorerie.entity;
 
 import com.buildflow.erp.common.entity.BaseEntity;
+import com.buildflow.erp.domain.bpu.entity.BpuLigne;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -31,4 +32,8 @@ public class CaisseTransaction extends BaseEntity {
 
     @Column(name = "reference_document", length = 100)
     private String referenceDocument;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "bpu_ligne_id")
+    private BpuLigne bpuLigne;
 }
