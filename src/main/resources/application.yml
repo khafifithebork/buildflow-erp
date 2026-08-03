@@ -34,3 +34,4 @@ app:
     allowed-origin:
       - https://buildflow-ochre-nine.vercel.app
       - http://localhost:3000
+      . https://buildflow-1s6ynwhk6-mohamed-najibs-projects-cb601244.vercel.app/
