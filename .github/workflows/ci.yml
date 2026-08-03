@@ -1,0 +1,223 @@
+# =============================================================================
+# BuildFlow ERP — Continuous Integration Pipeline
+# =============================================================================
+#
+# WHAT THIS FILE DOES:
+# This is a GitHub Actions workflow. Every time you push code or open a Pull
+# Request targeting the `main` branch, GitHub spins up a fresh virtual machine,
+# checks out your code, and runs the steps below — automatically, for free.
+#
+# WHY IT EXISTS:
+# Without CI, Railway (your deployment platform) will happily build and deploy
+# code that doesn't compile, has failing tests, or produces a broken Docker
+# image. This workflow catches those problems BEFORE they reach production.
+#
+# THE THREE GATES:
+# 1. Compile + Test  → Does the code compile? Do all tests pass?
+# 2. Liquibase        → Do migrations run cleanly against a real Postgres?
+# 3. Docker Build     → Does the Dockerfile that Railway uses actually produce
+#                        a working image?
+#
+# If ANY gate fails, the PR gets a red ❌ and you know not to merge it.
+# =============================================================================
+
+name: CI
+
+# -----------------------------------------------------------------------------
+# TRIGGER: When does this pipeline run?
+# -----------------------------------------------------------------------------
+# "push" to main   → runs after code is merged (confirms main is healthy)
+# "pull_request"    → runs on every PR targeting main (catches bugs before merge)
+# -----------------------------------------------------------------------------
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+# -----------------------------------------------------------------------------
+# ENVIRONMENT VARIABLES (shared across all steps)
+# -----------------------------------------------------------------------------
+# These are NOT your real production secrets. They are throwaway values used
+# only inside this ephemeral CI runner, which is destroyed after the job.
+#
+# WHY each variable exists:
+# - SPRING_PROFILES_ACTIVE: Activates the "test" profile. If you create an
+#   application-test.yml later, Spring Boot will load it automatically.
+# - JWT_SECRET: Your JwtService requires this to start. The value doesn't
+#   matter here — it just needs to be a valid Base64 string of 32+ bytes.
+# - DB_URL: Points Spring Boot at the PostgreSQL service container below.
+#   "localhost" works because GitHub Actions maps service container ports
+#   to the runner's localhost.
+# - DB_USERNAME / DB_PASSWORD: Must match the Postgres service credentials.
+# -----------------------------------------------------------------------------
+env:
+  SPRING_PROFILES_ACTIVE: test
+  JWT_SECRET: ci-only-fake-secret-do-not-use-in-production-abc123
+  DB_URL: jdbc:postgresql://localhost:5432/buildflow_test
+  DB_USERNAME: buildflow_ci
+  DB_PASSWORD: ci_password_not_real
+
+jobs:
+  # ===========================================================================
+  # JOB: build-and-test
+  # ===========================================================================
+  # This is the main (and only) job. It runs on a fresh Ubuntu VM provided
+  # free by GitHub. The VM is destroyed after the job completes — nothing
+  # persists between runs.
+  # ===========================================================================
+  build-and-test:
+    name: Build, Test & Validate Docker Image
+    runs-on: ubuntu-latest
+
+    # -------------------------------------------------------------------------
+    # SERVICE CONTAINERS
+    # -------------------------------------------------------------------------
+    # This spins up a real PostgreSQL 16 database alongside your code.
+    #
+    # WHY: Your @SpringBootTest test loads the full Spring context, which
+    # triggers Liquibase to run all 18 migrations and Hibernate to validate
+    # the schema. Without a real Postgres, the test would fail immediately.
+    #
+    # HOW: GitHub Actions runs this as a Docker container, maps port 5432
+    # to localhost, and waits for the health check to pass before running
+    # your steps. When the job ends, the container is destroyed — no cleanup.
+    # -------------------------------------------------------------------------
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: buildflow_test
+          POSTGRES_USER: buildflow_ci
+          POSTGRES_PASSWORD: ci_password_not_real
+        ports:
+          - 5432:5432
+        # Health check: GitHub Actions will wait until Postgres is ready
+        # before starting the build steps. Without this, Maven might try
+        # to connect before Postgres has finished initializing, causing
+        # a flaky "Connection refused" failure.
+        options: >-
+          --health-cmd="pg_isready -U buildflow_ci -d buildflow_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      # -----------------------------------------------------------------------
+      # STEP 1: Checkout the code
+      # -----------------------------------------------------------------------
+      # This clones your repository into the runner's workspace.
+      # Without this, the runner has an empty filesystem — it doesn't
+      # automatically have your code.
+      # -----------------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # STEP 2: Install Java (JDK)
+      # -----------------------------------------------------------------------
+      # Your project uses Java 25 (set in pom.xml: <java.version>25</java.version>).
+      # The GitHub runner doesn't have JDK 25 pre-installed, so we use the
+      # setup-java action to install it.
+      #
+      # "temurin" is Eclipse Temurin — the same JDK distribution your
+      # Dockerfile uses (eclipse-temurin:25-jdk-alpine). Using the same
+      # distribution in CI and production avoids subtle compatibility issues.
+      #
+      # TO CHANGE THE JAVA VERSION:
+      # If you ever downgrade or upgrade, change BOTH:
+      #   1. The `java-version` value below
+      #   2. The `<java.version>` in pom.xml
+      #   3. The base image tags in Dockerfile
+      # All three must agree, or you'll get compile errors.
+      # -----------------------------------------------------------------------
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      # -----------------------------------------------------------------------
+      # STEP 3: Cache Maven dependencies
+      # -----------------------------------------------------------------------
+      # Maven downloads ~200MB of dependencies (Spring Boot, Hibernate,
+      # Liquibase, MapStruct, etc.) every time it runs. This step caches
+      # them between CI runs so subsequent builds are 2-5x faster.
+      #
+      # HOW IT WORKS:
+      # - The cache key includes a hash of pom.xml. If pom.xml hasn't
+      #   changed, Maven reuses the cached ~/.m2/repository directory.
+      # - If pom.xml changes (e.g., you add a new dependency), the cache
+      #   is invalidated and Maven downloads everything fresh.
+      # - "restore-keys" provides a fallback: even if pom.xml changed,
+      #   it reuses the last cache as a starting point, so only the new
+      #   dependency needs downloading.
+      # -----------------------------------------------------------------------
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: maven-${{ runner.os }}-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            maven-${{ runner.os }}-
+
+      # -----------------------------------------------------------------------
+      # STEP 4: Make Maven wrapper executable
+      # -----------------------------------------------------------------------
+      # The Maven wrapper (mvnw) is a shell script checked into your repo.
+      # On Windows (your dev machine) it runs as mvnw.cmd, but on Linux
+      # (this CI runner) it runs as ./mvnw — which requires the execute
+      # permission bit to be set. Git doesn't always preserve this.
+      # -----------------------------------------------------------------------
+      - name: Make Maven wrapper executable
+        run: chmod +x mvnw
+
+      # -----------------------------------------------------------------------
+      # STEP 5: Build and Test (THE MAIN EVENT)
+      # -----------------------------------------------------------------------
+      # ./mvnw -B verify
+      #
+      # This single command does ALL of the following, in order:
+      #
+      #   1. validate   → Checks pom.xml is valid
+      #   2. compile    → Compiles all 140+ Java source files
+      #   3. test       → Runs unit tests
+      #   4. package    → Builds the fat JAR (erp-0.0.1-SNAPSHOT.jar)
+      #   5. verify     → Runs integration tests (@SpringBootTest)
+      #
+      # During step 5, Spring Boot starts up, Liquibase runs all 18
+      # migrations against the PostgreSQL service container, Hibernate
+      # validates the schema, and the contextLoads() test confirms
+      # everything wires up correctly.
+      #
+      # FLAGS:
+      #   -B  = "Batch mode" — no interactive prompts, no download
+      #         progress bars. Clean output for CI logs.
+      #
+      # If ANY step fails (compilation error, test failure, migration
+      # error), the entire workflow fails with a red ❌.
+      # -----------------------------------------------------------------------
+      - name: Build and run tests
+        run: ./mvnw -B verify
+
+      # -----------------------------------------------------------------------
+      # STEP 6: Validate Docker build
+      # -----------------------------------------------------------------------
+      # This builds the exact same Docker image that Railway will build
+      # when it deploys your code.
+      #
+      # WHY: It's possible for Maven to succeed but the Dockerfile to fail.
+      # For example:
+      #   - A COPY instruction references a file that doesn't exist
+      #   - The multi-stage build's target/*.jar glob matches nothing
+      #   - The base image (eclipse-temurin:25-jre-alpine) was removed
+      #
+      # By building the image here, you catch these problems in CI,
+      # not during a Railway deploy that takes your production offline.
+      #
+      # NOTE: We don't push this image anywhere. We only build it to
+      # prove it doesn't fail. Railway builds its own image from the
+      # same Dockerfile when it deploys.
+      # -----------------------------------------------------------------------
+      - name: Validate Docker image builds
+        run: docker build -t buildflow-erp:ci-${{ github.sha }} .

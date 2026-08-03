@@ -1,6 +1,12 @@
-# Activated in the deployed container (see docker-compose.yml:
-# SPRING_PROFILES_ACTIVE=prod). Locally / in dev, the defaults in
-# application.yml still apply — Swagger and full SQL logging stay on there.
+# =============================================================================
+# Production Profile — application-prod.yml
+# =============================================================================
+# Activated when SPRING_PROFILES_ACTIVE=prod is set (on Railway).
+#
+# Spring Boot merges this ON TOP of application.yml. Only values that need
+# to DIFFER from development are listed here — everything else is inherited.
+# =============================================================================
+
 springdoc:
   api-docs:
     enabled: false
@@ -9,4 +15,10 @@ springdoc:
 
 spring:
   jpa:
+    # Don't log every SQL statement in production — it floods the logs
+    # and leaks data structure details if logs are ever exposed.
     show-sql: false
+
+  # Liquibase still runs on startup (inherited from application.yml).
+  # This is safe: Liquibase changesets are idempotent — if a migration
+  # was already applied, it skips it.

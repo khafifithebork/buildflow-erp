@@ -24,32 +24,41 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * Parses a BPU market schedule uploaded as .xlsx/.xls, expecting the same column
- * order as the prototype's "Importer Marché Excel" feature:
- * Réf | Désignation | Unité | Qté Prévu | PU HT
+ * Parses a BPU (Bordereau des Prix Unitaires) market schedule uploaded as
+ * .xlsx/.xls.
  *
- * <p>Real-world BPDE/BPU exports are not a clean table: they carry a title banner,
- * a column-header row, LOT/SECTION/SOUS-LOT title rows, mid-section description-only
- * rows, and a "RECAPITULATION GENERALE" footer (sub-total / total HT / TVA / TTC lines)
- * that reuses the ref column for a text label. None of those are data lines. A real
- * BPU line is the only row type that always carries both a Quantité and a Prix
- * Unitaire as actual numbers, so that pair - not the row position or the ref column -
- * is what identifies a data row.
+ * <p>Dynamically detects the header row and its columns by keyword (e.g.
+ * "désignation"), since real-world BPDE/BPU exports don't share a fixed
+ * column order across files. Falls back to the prototype's fixed layout
+ * (Réf | Désignation | Unité | Qté Prévu | PU HT) when detection fails.
  *
- * <p>Sub-items are also commonly numbered with a single letter ("a", "b", "c"...)
- * scoped under a preceding group-header row (e.g. "2.1.4.01 Canalisations en PVC..."),
- * and that letter is reused by every group in the file. Since {@code bpu_lignes} has a
- * unique (chantier_id, ref) constraint, those bare letters must be qualified with their
- * group's code (e.g. "2.1.4.01.a") to stay unique across the whole import.
+ * <p>Real-world exports are also not a clean table below the header: they
+ * carry LOT/SECTION/SOUS-LOT title rows, mid-section description-only rows,
+ * and a "RECAPITULATION GENERALE" footer (sub-total / total HT / TVA / TTC
+ * lines) that reuses the ref column for a text label. None of those are data
+ * lines. A real BPU line is the only row type that always carries both a
+ * Quantité and a Prix Unitaire as actual numbers, so that pair - not the row
+ * position or the ref column alone - is what identifies a data row.
+ *
+ * <p>Sub-items are also commonly numbered with a single letter ("a", "b",
+ * "c"...) scoped under a preceding group-header row (e.g. "2.1.4.01
+ * Canalisations en PVC..."), and that letter is reused by every group in the
+ * file. Since {@code bpu_lignes} has a unique (chantier_id, ref) constraint,
+ * those bare letters must be qualified with their group's code (e.g.
+ * "2.1.4.01.a") to stay unique across the whole import.
  */
 @Component
 public class BpuExcelParser {
 
-    private static final int COL_REF = 0;
-    private static final int COL_DESIGNATION = 1;
-    private static final int COL_UNITE = 2;
-    private static final int COL_QTE_PREVUE = 3;
-    private static final int COL_PU_HT = 4;
+    /** Maximum number of rows to scan when looking for the header. */
+    private static final int MAX_HEADER_SCAN = 20;
+
+    // Fallback column indices (original fixed layout)
+    private static final int DEFAULT_COL_REF = 0;
+    private static final int DEFAULT_COL_DESIGNATION = 1;
+    private static final int DEFAULT_COL_UNITE = 2;
+    private static final int DEFAULT_COL_QTE = 3;
+    private static final int DEFAULT_COL_PU = 4;
 
     private static final Pattern LETTER_SUB_REF = Pattern.compile("(?i)^[a-z]{1,2}$");
 
@@ -67,10 +76,23 @@ public class BpuExcelParser {
             FormulaEvaluator evaluator = workbook.getCreationHelper().createFormulaEvaluator();
             DataFormatter formatter = new DataFormatter(Locale.FRENCH);
 
-            for (Row row : sheet) {
-                Cell qteCell = row.getCell(COL_QTE_PREVUE);
-                Cell puCell = row.getCell(COL_PU_HT);
-                String ref = readText(row.getCell(COL_REF), evaluator, formatter);
+            int headerRowIndex = detectHeaderRow(sheet);
+            int[] cols = detectColumns(sheet.getRow(headerRowIndex));
+            int colRef = cols[0];
+            int colDesignation = cols[1];
+            int colUnite = cols[2];
+            int colQte = cols[3];
+            int colPu = cols[4];
+
+            for (int i = headerRowIndex + 1; i <= sheet.getLastRowNum(); i++) {
+                Row row = sheet.getRow(i);
+                if (row == null) {
+                    continue;
+                }
+
+                Cell qteCell = row.getCell(colQte);
+                Cell puCell = row.getCell(colPu);
+                String ref = readText(row.getCell(colRef), evaluator, formatter);
 
                 if (!isNumeric(qteCell, evaluator) || !isNumeric(puCell, evaluator)) {
                     // Title banner, column-header row, LOT/SECTION titles, and the
@@ -87,12 +109,16 @@ public class BpuExcelParser {
                     continue;
                 }
 
-                String designation = readText(row.getCell(COL_DESIGNATION), evaluator, formatter);
-                String unite = readText(row.getCell(COL_UNITE), evaluator, formatter);
+                String designation = readText(row.getCell(colDesignation), evaluator, formatter);
+                String unite = readText(row.getCell(colUnite), evaluator, formatter);
 
-                if (designation == null || designation.isBlank() || unite == null || unite.isBlank()) {
+                if (designation == null || designation.isBlank()) {
                     throw new BusinessRuleException(
-                            "Unparseable BPU row for ref '" + ref + "': designation and unite are required");
+                            "Unparseable BPU row for ref '" + ref + "': designation is required");
+                }
+                if (unite == null || unite.isBlank()) {
+                    throw new BusinessRuleException(
+                            "Unparseable BPU row for ref '" + ref + "': unite is required");
                 }
 
                 String effectiveRef;
@@ -112,11 +138,13 @@ public class BpuExcelParser {
                         numericValue(puCell, evaluator)));
             }
         } catch (IOException e) {
-            throw new BusinessRuleException("Could not read the uploaded BPU Excel file: " + e.getMessage());
+            throw new BusinessRuleException(
+                    "Could not read the uploaded BPU Excel file: " + e.getMessage());
         }
 
         if (lignes.isEmpty()) {
-            throw new BusinessRuleException("No BPU lines could be parsed from the uploaded file");
+            throw new BusinessRuleException(
+                    "No BPU lines could be parsed from the uploaded file");
         }
 
         return lignes;
@@ -135,6 +163,106 @@ public class BpuExcelParser {
         }
         return candidate;
     }
+
+    // ── Header & column detection ──────────────────────────────────
+
+    /**
+     * Scans the first rows of the sheet looking for one that contains a
+     * recognisable header keyword (e.g. "désignation").  Falls back to row 0
+     * if nothing is found.
+     */
+    private int detectHeaderRow(Sheet sheet) {
+        int limit = Math.min(sheet.getLastRowNum(), MAX_HEADER_SCAN);
+        for (int i = 0; i <= limit; i++) {
+            Row row = sheet.getRow(i);
+            if (row == null) {
+                continue;
+            }
+            for (Cell cell : row) {
+                if (cell.getCellType() == CellType.STRING) {
+                    String val = cell.getStringCellValue().trim().toLowerCase();
+                    if (val.contains("désignation") || val.contains("designation")) {
+                        return i;
+                    }
+                }
+            }
+        }
+        return 0; // fallback
+    }
+
+    /**
+     * Detects column positions from the header row by matching known keywords.
+     *
+     * @return {@code int[5]} = { refCol, designationCol, uniteCol, qteCol, puHtCol }
+     */
+    private int[] detectColumns(Row headerRow) {
+        int refCol = -1;
+        int desCol = -1;
+        int uniteCol = -1;
+        int qteCol = -1;
+        int puCol = -1;
+
+        if (headerRow != null) {
+            for (Cell cell : headerRow) {
+                if (cell.getCellType() != CellType.STRING) {
+                    continue;
+                }
+                String val = cell.getStringCellValue().trim().toLowerCase();
+                int col = cell.getColumnIndex();
+
+                if (refCol == -1 && isRefHeader(val)) {
+                    refCol = col;
+                } else if (desCol == -1 && isDesignationHeader(val)) {
+                    desCol = col;
+                } else if (uniteCol == -1 && isUniteHeader(val)) {
+                    uniteCol = col;
+                } else if (qteCol == -1 && isQuantiteHeader(val)) {
+                    qteCol = col;
+                } else if (puCol == -1 && isPuHeader(val)) {
+                    puCol = col;
+                }
+                // Mont. HT column is intentionally not captured
+            }
+        }
+
+        return new int[]{
+                refCol >= 0 ? refCol : DEFAULT_COL_REF,
+                desCol >= 0 ? desCol : DEFAULT_COL_DESIGNATION,
+                uniteCol >= 0 ? uniteCol : DEFAULT_COL_UNITE,
+                qteCol >= 0 ? qteCol : DEFAULT_COL_QTE,
+                puCol >= 0 ? puCol : DEFAULT_COL_PU
+        };
+    }
+
+    private boolean isRefHeader(String val) {
+        return val.equals("n°") || val.equals("n °") || val.equals("ref")
+                || val.equals("réf") || val.equals("réf.") || val.equals("n");
+    }
+
+    private boolean isDesignationHeader(String val) {
+        return val.contains("désignation") || val.contains("designation");
+    }
+
+    private boolean isUniteHeader(String val) {
+        return val.equals("u") || val.equals("u.") || val.equals("unité")
+                || val.equals("unite");
+    }
+
+    private boolean isQuantiteHeader(String val) {
+        return val.contains("qté") || val.contains("qte") || val.contains("quantit");
+    }
+
+    private boolean isPuHeader(String val) {
+        // Match "P.U.", "P.U. HT", "PU HT", "Prix Unitaire", etc.
+        // but NOT "Mont. HT" or "Montant"
+        if (val.contains("mont")) {
+            return false;
+        }
+        return val.contains("p.u") || val.contains("p u")
+                || val.equals("pu ht") || val.contains("prix unit");
+    }
+
+    // ── Cell readers ───────────────────────────────────────────────
 
     private boolean isNumeric(Cell cell, FormulaEvaluator evaluator) {
         if (cell == null) {
