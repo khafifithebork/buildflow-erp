@@ -1,6 +1,7 @@
 package com.buildflow.erp.domain.achats.controller;
 
 import com.buildflow.erp.common.dto.ApiResponse;
+import com.buildflow.erp.common.dto.UpdateIndicateursRequest;
 import com.buildflow.erp.domain.achats.dto.request.CreateAchatRequest;
 import com.buildflow.erp.domain.achats.dto.response.AchatResponse;
 import com.buildflow.erp.domain.achats.service.AchatService;
@@ -52,6 +53,19 @@ public class AchatController {
             @PathVariable UUID id,
             @RequestParam String factureRef) {
         return ResponseEntity.ok(ApiResponse.success(achatService.validateFacture(id, factureRef)));
+    }
+
+    /**
+     * Toggles the two operational billing indicators on an existing achat.
+     * Kept separate from the (non-existent) full "update achat" endpoint so the
+     * Achat view can flip a checkbox without resubmitting lines and totals.
+     */
+    @PatchMapping("/{id}/indicateurs")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ACHAT', 'FINANCE')")
+    public ResponseEntity<ApiResponse<AchatResponse>> updateIndicateurs(
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateIndicateursRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(achatService.updateIndicateurs(id, request)));
     }
 
     @PatchMapping("/{id}/validate-paiement")

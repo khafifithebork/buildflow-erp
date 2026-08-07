@@ -253,7 +253,11 @@ public class SousTraitanceServiceImpl implements SousTraitanceService {
         tresorerieService.debiterPourAchat(
                 contrat.getChantier().getId(),
                 paiement.getMontant(),
-                "ST-" + paiement.getReference());
+                "ST-" + paiement.getReference(),
+                // Subcontractor payments carry no purchase-level indicators yet;
+                // finance ticks them from the Caisse view if applicable.
+                false,
+                false);
 
         log.info("Paiement {} paid: {} MAD for contrat {} (sous-traitant: {})",
                 paiement.getReference(), paiement.getMontant(),

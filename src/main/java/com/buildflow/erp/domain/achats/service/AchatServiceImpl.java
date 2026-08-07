@@ -1,5 +1,6 @@
 package com.buildflow.erp.domain.achats.service;
 
+import com.buildflow.erp.common.dto.UpdateIndicateursRequest;
 import com.buildflow.erp.common.exception.BusinessRuleException;
 import com.buildflow.erp.common.exception.ResourceNotFoundException;
 import com.buildflow.erp.domain.achats.dto.request.CreateAchatRequest;
@@ -63,6 +64,8 @@ public class AchatServiceImpl implements AchatService {
         achat.setChantier(chantier);
         achat.setDateCommande(request.dateCommande());
         achat.setDateLivraisonPrevue(request.dateLivraisonPrevue());
+        achat.setImpactAnalytiqueChantier(Boolean.TRUE.equals(request.impactAnalytiqueChantier()));
+        achat.setImpactComptableFiscal(Boolean.TRUE.equals(request.impactComptableFiscal()));
 
         BigDecimal totalHt = BigDecimal.ZERO;
 
@@ -157,7 +160,24 @@ public class AchatServiceImpl implements AchatService {
 
         // CROSS-DOMAIN SIDE EFFECT: Debit the chantier's caisse
         tresorerieService.debiterPourAchat(
-                achat.getChantier().getId(), achat.getTtc(), achat.getRef());
+                achat.getChantier().getId(), achat.getTtc(), achat.getRef(),
+                achat.isImpactAnalytiqueChantier(), achat.isImpactComptableFiscal());
+
+        return achatMapper.toResponse(achatRepository.save(achat));
+    }
+
+    @Override
+    @Transactional
+    public AchatResponse updateIndicateurs(UUID id, UpdateIndicateursRequest request) {
+        Achat achat = findEntityById(id);
+
+        // Null = "leave unchanged", so a single checkbox can be toggled alone.
+        if (request.impactAnalytiqueChantier() != null) {
+            achat.setImpactAnalytiqueChantier(request.impactAnalytiqueChantier());
+        }
+        if (request.impactComptableFiscal() != null) {
+            achat.setImpactComptableFiscal(request.impactComptableFiscal());
+        }
 
         return achatMapper.toResponse(achatRepository.save(achat));
     }

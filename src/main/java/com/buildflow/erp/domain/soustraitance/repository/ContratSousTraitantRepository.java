@@ -12,6 +12,7 @@ import java.util.UUID;
 public interface ContratSousTraitantRepository extends JpaRepository<ContratSousTraitant, UUID> {
     boolean existsByReference(String reference);
     List<ContratSousTraitant> findByChantierId(UUID chantierId);
+    long countByChantierId(UUID chantierId);
     List<ContratSousTraitant> findBySousTraitantId(UUID sousTraitantId);
 
     // NOTE: the backend has no "travaux réalisés" (validated field work) tracking yet,

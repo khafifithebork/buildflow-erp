@@ -12,6 +12,8 @@ import java.util.UUID;
 public interface AchatRepository extends JpaRepository<Achat, UUID> {
     boolean existsByRef(String ref);
 
+    long countByChantierId(UUID chantierId);
+
     @Query("""
             SELECT COALESCE(SUM(l.total), 0) FROM LigneAchat l
             WHERE l.bpuLigne.id = :bpuLigneId

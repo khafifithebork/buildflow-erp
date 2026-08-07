@@ -12,6 +12,7 @@ import java.util.UUID;
 public interface StockArticleRepository extends JpaRepository<StockArticle, UUID> {
     Optional<StockArticle> findByArticleIdAndChantierId(UUID articleId, UUID chantierId);
     Page<StockArticle> findByChantierId(UUID chantierId, Pageable pageable);
+    long countByChantierId(UUID chantierId);
 
     // No Dépôts/En Travaux split yet — StockArticle isn't scoped beyond a
     // single chantier quantity (see doc gap 2.7), so this is one global total.

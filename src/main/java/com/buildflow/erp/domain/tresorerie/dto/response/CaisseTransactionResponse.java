@@ -13,5 +13,9 @@ public record CaisseTransactionResponse(
         String motif,
         String referenceDocument,
         LocalDateTime createdAt,
-        String bpuLigneRef
+        String bpuLigneRef,
+        /** "L'achat a-t-il réellement servi au chantier ?" */
+        boolean impactAnalytiqueChantier,
+        /** "Y a-t-il une facture officielle à déclarer ?" */
+        boolean impactComptableFiscal
 ) {}

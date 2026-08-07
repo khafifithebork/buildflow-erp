@@ -19,5 +19,9 @@ public record AchatResponse(
         BigDecimal ttc,
         List<LigneAchatResponse> lignes,
         String bonLivraisonRef,
-        String factureRef
+        String factureRef,
+        /** "L'achat a-t-il réellement servi au chantier ?" */
+        boolean impactAnalytiqueChantier,
+        /** "Y a-t-il une facture officielle à déclarer ?" */
+        boolean impactComptableFiscal
 ) {}

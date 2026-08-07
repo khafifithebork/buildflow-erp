@@ -1,0 +1,20 @@
+# Local-only test configuration. Points at the throwaway Postgres started with:
+#   docker run -d --name buildflow-local-test \
+#     -e POSTGRES_DB=buildflow -e POSTGRES_USER=buildflow_dev \
+#     -e POSTGRES_PASSWORD=localdevpw -p 5433:5432 postgres:16-alpine
+# Never point this at a deployed database.
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/buildflow}
+    username: ${DB_USERNAME:buildflow_dev}
+    password: ${DB_PASSWORD:localdevpw}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+  liquibase:
+    enabled: true
+
+jwt:
+  secret: ${JWT_SECRET:test-only-secret-value-that-is-long-enough-for-hs256-signing}
+  expiration-ms: 86400000

@@ -1,5 +1,6 @@
 package com.buildflow.erp.domain.achats.service;
 
+import com.buildflow.erp.common.dto.UpdateIndicateursRequest;
 import com.buildflow.erp.domain.achats.dto.request.CreateAchatRequest;
 import com.buildflow.erp.domain.achats.dto.response.AchatResponse;
 import java.util.List;
@@ -12,4 +13,5 @@ public interface AchatService {
     AchatResponse validateBL(UUID id, String bonLivraisonRef);
     AchatResponse validateFacture(UUID id, String factureRef);
     AchatResponse validatePaiement(UUID id);
+    AchatResponse updateIndicateurs(UUID id, UpdateIndicateursRequest request);
 }

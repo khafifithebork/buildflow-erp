@@ -16,6 +16,8 @@ public interface AttachementRepository extends JpaRepository<Attachement, UUID> 
 
     boolean existsByChantierIdAndReference(UUID chantierId, String reference);
 
+    long countByChantierId(UUID chantierId);
+
     // Attachements en cours: submitted but not yet encaissé, as of now.
     @Query("""
             SELECT COALESCE(SUM(a.montantTtc), 0) FROM Attachement a

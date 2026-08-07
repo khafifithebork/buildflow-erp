@@ -251,7 +251,10 @@ Statuts: `ACTIF`, `INACTIF`, `BLACKLISTE`
 
 | Method | Endpoint | Roles | Description |
 |--------|----------|-------|-------------|
-| `POST` | `/` | `ADMIN`, `DIRECTEUR`, `PM`, `CHEF_CHANTIER` | Create site |
+| `POST` | `/` | `ADMIN`, `DIRECTEUR`, `PM`, `CHEF_CHANTIER` | Create site (auto-provisions its Caisse) |
+| `PUT` | `/{id}` | `ADMIN`, `DIRECTEUR`, `PM`, `CHEF_CHANTIER` | Update site |
+| `PATCH` | `/{id}/demarrer` | `ADMIN`, `DIRECTEUR`, `PM`, `CHEF_CHANTIER` | `EN_PREPARATION` → `EN_COURS` |
+| `DELETE` | `/{id}` | `ADMIN`, `DIRECTEUR` | Delete site (see rules below) |
 | `GET` | `/{id}` | Authenticated | Get by ID |
 | `GET` | `/` | Authenticated | List all |
 
@@ -268,6 +271,24 @@ Statuts: `ACTIF`, `INACTIF`, `BLACKLISTE`
 
 Statuts: `EN_PREPARATION`, `EN_COURS`, `EN_PAUSE`, `TERMINE`, `ANNULE`
 Jalon Statuts: `A_FAIRE`, `EN_COURS`, `TERMINE`, `EN_RETARD`
+
+#### Deletion rules
+
+`POST /` auto-provisions a Caisse for each new chantier, so a chantier always has
+at least one child row. `DELETE /{id}` therefore applies explicit rules rather
+than relying on the database:
+
+| Related data | Behaviour |
+|--------------|-----------|
+| Jalons, lignes BPU | Deleted with the chantier |
+| Caisse with **no** operations | Deleted with the chantier |
+| Employés (`chantierActuel`) | Unlinked (set to `NULL`) |
+| Achats, opérations de caisse, fiches de paie, contrats de sous-traitance, attachements, lignes de stock | **Blocked** — `409` naming what to remove first |
+
+The `409` body is an RFC 7807 `ProblemDetail` whose `detail` lists the blocking
+records, e.g. *"Ce chantier ne peut pas être supprimé : il est encore référencé
+par 3 commandes d'achat, 1 opération de caisse. Supprimez ou réaffectez ces
+éléments avant de réessayer."*
 
 ---
 
@@ -328,17 +349,38 @@ Response includes auto-updated: `nombreContratsActifs`, `montantTotalPaye`
 | `PATCH` | `/{id}/validate-bl?bonLivraisonRef=BL-001` | `ADMIN`, `ACHAT`, `PM` | Confirm delivery → Stock provisioned |
 | `PATCH` | `/{id}/validate-facture?factureRef=FA-001` | `ADMIN`, `FINANCE` | Record invoice |
 | `PATCH` | `/{id}/validate-paiement` | `ADMIN`, `FINANCE` | Pay → Caisse debited |
+| `PATCH` | `/{id}/indicateurs` | `ADMIN`, `ACHAT`, `FINANCE` | Toggle the billing indicators |
 
 **Create Request:**
 ```json
 {
   "ref": "ACH-2026-001", "fournisseurId": "uuid", "chantierId": "uuid",
   "dateCommande": "2026-07-01", "dateLivraisonPrevue": "2026-07-10",
-  "lignes": [{ "articleId": "uuid", "quantite": 100.000, "prixUnitaire": 75.00 }]
+  "lignes": [{ "articleId": "uuid", "quantite": 100.000, "prixUnitaire": 75.00 }],
+  "impactAnalytiqueChantier": true,
+  "impactComptableFiscal": false
 }
 ```
 
-**Response includes:** `ht`, `tva` (20%), `ttc` (server-computed), `lignes[]` with snapshots of article data, `bonLivraisonRef`, `factureRef`
+**Response includes:** `ht`, `tva` (20%), `ttc` (server-computed), `lignes[]` with snapshots of article data, `bonLivraisonRef`, `factureRef`, `impactAnalytiqueChantier`, `impactComptableFiscal`
+
+#### Operational billing indicators
+
+Both flags are optional on create and default to `false`.
+
+| Field | Question shown in the UI | Meaning |
+|-------|--------------------------|---------|
+| `impactAnalytiqueChantier` | *L'achat a-t-il réellement servi au chantier ?* | The spend belongs in the site's analytic cost |
+| `impactComptableFiscal` | *Y a-t-il une facture officielle à déclarer ?* | An official invoice exists and must be declared |
+
+`PATCH /{id}/indicateurs` takes a partial body — omitting a field leaves it unchanged:
+
+```json
+{ "impactComptableFiscal": true }
+```
+
+The same two fields exist on cash operations (see Trésorerie). When an achat is paid,
+the generated caisse debit inherits the achat's two flags.
 
 Statut Flow: `EN_COURS` → `LIVRE` → `FACTURE` → `PAYE`
 
@@ -372,6 +414,7 @@ Statut Flow: `EN_COURS` → `LIVRE` → `FACTURE` → `PAYE`
 | `GET` | `/{id}` | `ADMIN`, `FINANCE`, `DIRECTEUR`, `CHEF_CHANTIER` | Get by ID (includes transactions) |
 | `POST` | `/{id}/transactions` | `ADMIN`, `FINANCE` | Credit or debit |
 | `GET` | `/{id}/transactions` | `ADMIN`, `FINANCE`, `DIRECTEUR` | Transaction history |
+| `PATCH` | `/{id}/transactions/{transactionId}/indicateurs` | `ADMIN`, `FINANCE` | Toggle the billing indicators |
 
 **Create Caisse:**
 ```json
@@ -380,12 +423,20 @@ Statut Flow: `EN_COURS` → `LIVRE` → `FACTURE` → `PAYE`
 
 **Create Transaction:**
 ```json
-{ "typeTransaction": "CREDIT", "montant": 200000.00, "motif": "Approvisionnement initial", "referenceDocument": "VIR-001" }
+{
+  "typeTransaction": "CREDIT", "montant": 200000.00,
+  "motif": "Approvisionnement initial", "referenceDocument": "VIR-001",
+  "impactAnalytiqueChantier": false,
+  "impactComptableFiscal": false
+}
 ```
 
 TypeTransaction: `CREDIT`, `DEBIT`
 
 > DEBIT rejected if balance would go negative → `422`
+
+Cash operations carry the same two optional billing indicators as achats
+(both default to `false`) — see [Achats](#58-achats-purchase-orders--apiv1achats).
 
 ---
 
