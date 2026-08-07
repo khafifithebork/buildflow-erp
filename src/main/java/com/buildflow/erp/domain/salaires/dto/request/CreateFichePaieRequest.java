@@ -10,7 +10,6 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 public record CreateFichePaieRequest(
-        @NotBlank String reference,
         @NotNull UUID employeId,
         @NotNull UUID chantierId,
         @NotBlank @Pattern(regexp = "\\d{4}-\\d{2}", message = "Periode must be YYYY-MM format") String periode,

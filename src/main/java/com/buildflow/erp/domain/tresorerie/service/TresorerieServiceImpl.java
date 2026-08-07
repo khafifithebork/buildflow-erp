@@ -41,15 +41,11 @@ public class TresorerieServiceImpl implements TresorerieService {
     @Override
     @Transactional
     public CaisseResponse createCaisse(CreateCaisseRequest request) {
-        if (caisseRepository.existsByCode(request.code())) {
-            throw new ConflictException("A caisse with code '" + request.code() + "' already exists");
-        }
-
         Chantier chantier = chantierRepository.findById(request.chantierId())
                 .orElseThrow(() -> new ResourceNotFoundException("Chantier", request.chantierId()));
 
         Caisse caisse = new Caisse();
-        caisse.setCode(request.code());
+        caisse.setCode(deriveCaisseCode(chantier));
         caisse.setLibelle(request.libelle());
         caisse.setChantier(chantier);
         caisse.setSeuilMinimum(request.seuilMinimum());
@@ -166,6 +162,27 @@ public class TresorerieServiceImpl implements TresorerieService {
         );
     }
     // ── Private ────────────────────────────────────────────────────
+
+    /**
+     * A caisse is named after the chantier it belongs to — {@code CAISSE-CH-2026-001}
+     * says far more at a glance than a bare running number would.
+     *
+     * <p>Chantier creation auto-provisions the first one, so the base name is
+     * normally free; a chantier given a second caisse gets {@code …-2}, {@code …-3}.
+     */
+    private String deriveCaisseCode(Chantier chantier) {
+        String base = "CAISSE-" + chantier.getCode();
+        if (!caisseRepository.existsByCode(base)) {
+            return base;
+        }
+        for (int suffix = 2; suffix < 1000; suffix++) {
+            String candidate = base + "-" + suffix;
+            if (!caisseRepository.existsByCode(candidate)) {
+                return candidate;
+            }
+        }
+        throw new ConflictException("Impossible de générer un code de caisse pour le chantier " + chantier.getCode());
+    }
 
     private Caisse getOrCreateCaisse(UUID chantierId) {
 

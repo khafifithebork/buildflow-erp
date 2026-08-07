@@ -1,5 +1,7 @@
 package com.buildflow.erp.domain.referentiel.service;
 
+import com.buildflow.erp.common.code.CodeGenerator;
+import com.buildflow.erp.common.code.CodeSequence;
 import com.buildflow.erp.common.exception.BusinessRuleException;
 import com.buildflow.erp.common.exception.ConflictException;
 import com.buildflow.erp.common.exception.ResourceNotFoundException;
@@ -35,6 +37,7 @@ public class ChantierServiceImpl implements ChantierService {
     private final ChantierMapper chantierMapper;
     private final JalonMapper jalonMapper;
     private final CaisseRepository caisseRepository;
+    private final CodeGenerator codeGenerator;
 
     // Read-only, used by delete() to explain exactly what still references the
     // chantier instead of letting the DB raise an opaque FK violation.
@@ -48,11 +51,8 @@ public class ChantierServiceImpl implements ChantierService {
     @Override
     @Transactional
     public ChantierResponse create(CreateChantierRequest request) {
-        if (chantierRepository.existsByCode(request.code())) {
-            throw new ConflictException("A chantier with code '" + request.code() + "' already exists");
-        }
-
         Chantier chantier = chantierMapper.toEntity(request);
+        chantier.setCode(codeGenerator.next(CodeSequence.CHANTIER));
 
         // Manually map nested Jalons to ensure the bidirectional relationship is set correctly
         if (request.jalons() != null) {
@@ -83,10 +83,7 @@ public class ChantierServiceImpl implements ChantierService {
         Chantier chantier = chantierRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Chantier", id));
 
-        if (chantierRepository.existsByCodeAndIdNot(request.code(), id)) {
-            throw new ConflictException("A chantier with code '" + request.code() + "' already exists");
-        }
-
+        // The code is assigned once at creation and never changes.
         chantierMapper.updateEntityFromRequest(request, chantier);
 
         return chantierMapper.toResponse(chantierRepository.save(chantier));

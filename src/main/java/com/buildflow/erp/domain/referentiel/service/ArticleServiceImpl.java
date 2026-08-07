@@ -1,7 +1,8 @@
 package com.buildflow.erp.domain.referentiel.service;
 
+import com.buildflow.erp.common.code.CodeGenerator;
+import com.buildflow.erp.common.code.CodeSequence;
 import com.buildflow.erp.common.dto.PageResponse;
-import com.buildflow.erp.common.exception.ConflictException;
 import com.buildflow.erp.common.exception.ResourceNotFoundException;
 import com.buildflow.erp.domain.referentiel.dto.request.CreateArticleRequest;
 import com.buildflow.erp.domain.referentiel.dto.response.ArticleResponse;
@@ -25,18 +26,16 @@ public class ArticleServiceImpl implements ArticleService {
     private final ArticleRepository articleRepository;
     private final CategorieArticleRepository categorieArticleRepository;
     private final ArticleMapper articleMapper;
+    private final CodeGenerator codeGenerator;
 
     @Override
     @Transactional
     public ArticleResponse create(CreateArticleRequest request) {
-        if (articleRepository.existsByCode(request.code())) {
-            throw new ConflictException("An article with code '" + request.code() + "' already exists");
-        }
-
         CategorieArticle categorie = categorieArticleRepository.findById(request.categorieId())
                 .orElseThrow(() -> new ResourceNotFoundException("CategorieArticle", request.categorieId()));
 
         Article article = articleMapper.toEntity(request);
+        article.setCode(codeGenerator.next(CodeSequence.ARTICLE));
         article.setCategorie(categorie);
 
         Article saved = articleRepository.save(article);
@@ -49,10 +48,7 @@ public class ArticleServiceImpl implements ArticleService {
         Article article = articleRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Article", id));
 
-        if (articleRepository.existsByCodeAndIdNot(request.code(), id)) {
-            throw new ConflictException("An article with code '" + request.code() + "' already exists");
-        }
-
+        // The code is assigned once at creation and never changes.
         CategorieArticle categorie = categorieArticleRepository.findById(request.categorieId())
                 .orElseThrow(() -> new ResourceNotFoundException("CategorieArticle", request.categorieId()));
 

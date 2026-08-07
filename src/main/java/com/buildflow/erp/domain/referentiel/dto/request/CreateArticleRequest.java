@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.UUID;
 
 public record CreateArticleRequest(
-        @NotBlank String code,
         @NotBlank String designation,
         String description,
         @NotNull UUID categorieId,

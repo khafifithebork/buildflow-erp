@@ -7,7 +7,6 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 public record CreateEmployeRequest(
-        @NotBlank String matricule,
         @NotBlank String nom,
         @NotBlank String prenom,
         @NotNull EmployeRole role,

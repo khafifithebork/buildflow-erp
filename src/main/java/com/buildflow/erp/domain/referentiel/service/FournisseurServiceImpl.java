@@ -1,6 +1,7 @@
 package com.buildflow.erp.domain.referentiel.service;
 
-import com.buildflow.erp.common.exception.ConflictException;
+import com.buildflow.erp.common.code.CodeGenerator;
+import com.buildflow.erp.common.code.CodeSequence;
 import com.buildflow.erp.common.exception.ResourceNotFoundException;
 import com.buildflow.erp.domain.referentiel.dto.request.CreateFournisseurRequest;
 import com.buildflow.erp.domain.referentiel.dto.response.FournisseurResponse;
@@ -20,14 +21,13 @@ public class FournisseurServiceImpl implements FournisseurService {
 
     private final FournisseurRepository fournisseurRepository;
     private final FournisseurMapper fournisseurMapper;
+    private final CodeGenerator codeGenerator;
 
     @Override
     @Transactional
     public FournisseurResponse create(CreateFournisseurRequest request) {
-        if (fournisseurRepository.existsByCode(request.code())) {
-            throw new ConflictException("A fournisseur with code '" + request.code() + "' already exists");
-        }
         Fournisseur fournisseur = fournisseurMapper.toEntity(request);
+        fournisseur.setCode(codeGenerator.next(CodeSequence.FOURNISSEUR));
         Fournisseur saved = fournisseurRepository.save(fournisseur);
         return fournisseurMapper.toResponse(saved);
     }
@@ -38,10 +38,7 @@ public class FournisseurServiceImpl implements FournisseurService {
         Fournisseur fournisseur = fournisseurRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Fournisseur", id));
 
-        if (fournisseurRepository.existsByCodeAndIdNot(request.code(), id)) {
-            throw new ConflictException("A fournisseur with code '" + request.code() + "' already exists");
-        }
-
+        // The code is assigned once at creation and never changes.
         fournisseurMapper.updateEntityFromRequest(request, fournisseur);
 
         return fournisseurMapper.toResponse(fournisseurRepository.save(fournisseur));

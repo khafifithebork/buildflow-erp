@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.UUID;
 
 public record CreateAchatRequest(
-        @NotBlank String ref,
         @NotNull UUID fournisseurId,
         @NotNull UUID chantierId,
         @NotNull LocalDate dateCommande,

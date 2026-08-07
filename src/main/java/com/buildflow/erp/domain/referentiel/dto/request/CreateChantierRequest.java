@@ -7,7 +7,6 @@ import java.time.LocalDate;
 import java.util.List;
 
 public record CreateChantierRequest(
-        @NotBlank String code,
         @NotBlank String nom,
         @NotBlank String client,
         String adresse,

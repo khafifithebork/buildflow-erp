@@ -158,7 +158,6 @@ class ChantierDeleteTests {
     private CreateChantierRequest newChantierRequest(List<CreateJalonRequest> jalons) {
         String suffix = "IT-" + SEQ.incrementAndGet() + "-" + UUID.randomUUID().toString().substring(0, 8);
         return new CreateChantierRequest(
-                "CH-" + suffix,
                 "Chantier de test " + suffix,
                 "Client de test",
                 "1 rue du test",
@@ -208,7 +207,6 @@ class ChantierDeleteTests {
         article = articleRepository.save(article);
 
         return achatService.create(new CreateAchatRequest(
-                "ACH-" + suffix,
                 fournisseur.getId(),
                 chantierId,
                 LocalDate.now(),

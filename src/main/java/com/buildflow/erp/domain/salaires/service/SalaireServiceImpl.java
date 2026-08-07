@@ -1,6 +1,8 @@
 package com.buildflow.erp.domain.salaires.service;
 
 import com.buildflow.erp.common.exception.BusinessRuleException;
+import com.buildflow.erp.common.code.CodeGenerator;
+import com.buildflow.erp.common.code.CodeSequence;
 import com.buildflow.erp.common.exception.ConflictException;
 import com.buildflow.erp.common.exception.ResourceNotFoundException;
 import com.buildflow.erp.domain.bpu.entity.BpuLigne;
@@ -38,14 +40,11 @@ public class SalaireServiceImpl implements SalaireService {
     private final BpuLigneRepository bpuLigneRepository;
     private final FichePaieMapper fichePaieMapper;
     private final TresorerieService tresorerieService;
+    private final CodeGenerator codeGenerator;
 
     @Override
     @Transactional
     public FichePaieResponse create(CreateFichePaieRequest request) {
-        if (fichePaieRepository.existsByReference(request.reference())) {
-            throw new ConflictException("A fiche de paie with reference '" + request.reference() + "' already exists");
-        }
-
         if (fichePaieRepository.existsByEmployeIdAndPeriode(request.employeId(), request.periode())) {
             throw new ConflictException("A fiche de paie already exists for this employee for period " + request.periode());
         }
@@ -57,7 +56,8 @@ public class SalaireServiceImpl implements SalaireService {
                 .orElseThrow(() -> new ResourceNotFoundException("Chantier", request.chantierId()));
 
         FichePaie fiche = new FichePaie();
-        fiche.setReference(request.reference());
+        // Payslip numbering restarts each period: FDP-2026-07-001.
+        fiche.setReference(codeGenerator.next(CodeSequence.FICHE_PAIE, request.periode()));
         fiche.setEmploye(employe);
         fiche.setChantier(chantier);
         fiche.setPeriode(request.periode());

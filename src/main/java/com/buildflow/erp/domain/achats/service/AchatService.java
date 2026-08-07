@@ -2,6 +2,7 @@ package com.buildflow.erp.domain.achats.service;
 
 import com.buildflow.erp.common.dto.UpdateIndicateursRequest;
 import com.buildflow.erp.domain.achats.dto.request.CreateAchatRequest;
+import com.buildflow.erp.domain.achats.dto.request.UpdateLignePrixRequest;
 import com.buildflow.erp.domain.achats.dto.response.AchatResponse;
 import java.util.List;
 import java.util.UUID;
@@ -14,4 +15,7 @@ public interface AchatService {
     AchatResponse validateFacture(UUID id, String factureRef);
     AchatResponse validatePaiement(UUID id);
     AchatResponse updateIndicateurs(UUID id, UpdateIndicateursRequest request);
+
+    /** Re-prices one order line and rolls the change up into the order totals. */
+    AchatResponse updateLignePrix(UUID achatId, UUID ligneId, UpdateLignePrixRequest request);
 }
