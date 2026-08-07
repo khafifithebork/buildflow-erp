@@ -1,5 +1,6 @@
 package com.buildflow.erp.domain.tresorerie.service;
 
+import com.buildflow.erp.common.dto.UpdateIndicateursRequest;
 import com.buildflow.erp.domain.tresorerie.dto.request.CreateCaisseRequest;
 import com.buildflow.erp.domain.tresorerie.dto.request.CreateTransactionRequest;
 import com.buildflow.erp.domain.tresorerie.dto.response.CaisseResponse;
@@ -21,11 +22,19 @@ public interface TresorerieService {
 
     List<CaisseTransactionResponse> getTransactions(UUID caisseId);
 
+    /** Toggles the two operational billing indicators on an existing cash operation. */
+    CaisseTransactionResponse updateTransactionIndicateurs(
+            UUID caisseId, UUID transactionId, UpdateIndicateursRequest request);
+
     /**
      * Cross-domain method: called by AchatServiceImpl when an Achat transitions to PAYE.
      * Debits the caisse associated with the achat's chantier.
+     *
+     * <p>The generated debit IS the cash side of that achat, so it inherits the
+     * achat's two billing indicators rather than defaulting them to false.
      */
-    void debiterPourAchat(UUID chantierId, BigDecimal montant, String achatRef);
+    void debiterPourAchat(UUID chantierId, BigDecimal montant, String achatRef,
+                          boolean impactAnalytiqueChantier, boolean impactComptableFiscal);
 
     /**
      * Cross-domain method: called by SalaireServiceImpl when a FichePaie is paid

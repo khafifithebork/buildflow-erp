@@ -9,7 +9,6 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 public record CreateContratRequest(
-        @NotBlank String reference,
         @NotNull UUID sousTraitantId,
         @NotNull UUID chantierId,
         @NotBlank String objet,

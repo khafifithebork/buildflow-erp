@@ -8,7 +8,6 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 public record CreateCaisseRequest(
-        @NotBlank String code,
         @NotBlank String libelle,
         @NotNull UUID chantierId,
         @NotNull @DecimalMin("0.00") BigDecimal seuilMinimum

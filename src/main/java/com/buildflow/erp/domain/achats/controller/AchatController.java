@@ -1,9 +1,12 @@
 package com.buildflow.erp.domain.achats.controller;
 
 import com.buildflow.erp.common.dto.ApiResponse;
+import com.buildflow.erp.common.dto.UpdateIndicateursRequest;
 import com.buildflow.erp.domain.achats.dto.request.CreateAchatRequest;
 import com.buildflow.erp.domain.achats.dto.response.AchatResponse;
+import com.buildflow.erp.domain.achats.dto.request.UpdateLignePrixRequest;
 import com.buildflow.erp.domain.achats.service.AchatService;
+import com.buildflow.erp.domain.achats.service.AchatServiceImpl;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -52,6 +55,39 @@ public class AchatController {
             @PathVariable UUID id,
             @RequestParam String factureRef) {
         return ResponseEntity.ok(ApiResponse.success(achatService.validateFacture(id, factureRef)));
+    }
+
+    /**
+     * Toggles the two operational billing indicators on an existing achat.
+     * Kept separate from the (non-existent) full "update achat" endpoint so the
+     * Achat view can flip a checkbox without resubmitting lines and totals.
+     */
+    @PatchMapping("/{id}/indicateurs")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ACHAT', 'FINANCE')")
+    public ResponseEntity<ApiResponse<AchatResponse>> updateIndicateurs(
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateIndicateursRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(achatService.updateIndicateurs(id, request)));
+    }
+
+    /**
+     * Re-prices one line of an order. Permitted at every statut; when the order
+     * is already invoiced or paid the response message says what that leaves
+     * out of step downstream.
+     */
+    @PatchMapping("/{id}/lignes/{ligneId}/prix")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ACHAT', 'FINANCE')")
+    public ResponseEntity<ApiResponse<AchatResponse>> updateLignePrix(
+            @PathVariable UUID id,
+            @PathVariable UUID ligneId,
+            @Valid @RequestBody UpdateLignePrixRequest request) {
+
+        AchatResponse response = achatService.updateLignePrix(id, ligneId, request);
+        String warning = AchatServiceImpl.repricingWarning(response.status());
+
+        return ResponseEntity.ok(warning == null
+                ? ApiResponse.success(response)
+                : ApiResponse.success(response, warning));
     }
 
     @PatchMapping("/{id}/validate-paiement")

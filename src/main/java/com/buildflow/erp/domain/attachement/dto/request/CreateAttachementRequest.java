@@ -9,7 +9,6 @@ import java.time.LocalDate;
 import java.util.List;
 
 public record CreateAttachementRequest(
-        @NotBlank String reference,
         @NotNull LocalDate dateAttachement,
         @NotEmpty @Valid List<CreateAttachementLigneRequest> lignes
 ) {}

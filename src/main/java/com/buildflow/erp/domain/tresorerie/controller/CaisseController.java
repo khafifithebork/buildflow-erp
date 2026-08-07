@@ -1,6 +1,7 @@
 package com.buildflow.erp.domain.tresorerie.controller;
 
 import com.buildflow.erp.common.dto.ApiResponse;
+import com.buildflow.erp.common.dto.UpdateIndicateursRequest;
 import com.buildflow.erp.domain.tresorerie.dto.request.CreateCaisseRequest;
 import com.buildflow.erp.domain.tresorerie.dto.request.CreateTransactionRequest;
 import com.buildflow.erp.domain.tresorerie.dto.response.CaisseResponse;
@@ -50,6 +51,17 @@ public class CaisseController {
             @Valid @RequestBody CreateTransactionRequest request) {
         CaisseTransactionResponse response = tresorerieService.enregistrerTransaction(id, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(response));
+    }
+
+    /** Toggles the two operational billing indicators on an existing cash operation. */
+    @PatchMapping("/{id}/transactions/{transactionId}/indicateurs")
+    @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE')")
+    public ResponseEntity<ApiResponse<CaisseTransactionResponse>> updateTransactionIndicateurs(
+            @PathVariable UUID id,
+            @PathVariable UUID transactionId,
+            @Valid @RequestBody UpdateIndicateursRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(
+                tresorerieService.updateTransactionIndicateurs(id, transactionId, request)));
     }
 
     @GetMapping("/{id}/transactions")

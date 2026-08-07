@@ -1,7 +1,8 @@
 package com.buildflow.erp.domain.referentiel.service;
 
+import com.buildflow.erp.common.code.CodeGenerator;
+import com.buildflow.erp.common.code.CodeSequence;
 import com.buildflow.erp.common.dto.PageResponse;
-import com.buildflow.erp.common.exception.ConflictException;
 import com.buildflow.erp.common.exception.ResourceNotFoundException;
 import com.buildflow.erp.domain.referentiel.dto.request.CreateCategorieArticleRequest;
 import com.buildflow.erp.domain.referentiel.dto.response.CategorieArticleResponse;
@@ -22,15 +23,13 @@ public class CategorieArticleServiceImpl implements CategorieArticleService {
 
     private final CategorieArticleRepository categorieArticleRepository;
     private final CategorieArticleMapper categorieArticleMapper;
+    private final CodeGenerator codeGenerator;
 
     @Override
     @Transactional
     public CategorieArticleResponse create(CreateCategorieArticleRequest request) {
-        if (categorieArticleRepository.findByCode(request.code()).isPresent()) {
-            throw new ConflictException("A category with code '" + request.code() + "' already exists");
-        }
-
         CategorieArticle categorie = categorieArticleMapper.toEntity(request);
+        categorie.setCode(codeGenerator.next(CodeSequence.CATEGORIE_ARTICLE));
 
         if (request.parentId() != null) {
             CategorieArticle parent = categorieArticleRepository.findById(request.parentId())

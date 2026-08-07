@@ -1,9 +1,13 @@
 package com.buildflow.erp.domain.achats.service;
 
+import com.buildflow.erp.common.code.CodeGenerator;
+import com.buildflow.erp.common.code.CodeSequence;
+import com.buildflow.erp.common.dto.UpdateIndicateursRequest;
 import com.buildflow.erp.common.exception.BusinessRuleException;
 import com.buildflow.erp.common.exception.ResourceNotFoundException;
 import com.buildflow.erp.domain.achats.dto.request.CreateAchatRequest;
 import com.buildflow.erp.domain.achats.dto.request.CreateLigneAchatRequest;
+import com.buildflow.erp.domain.achats.dto.request.UpdateLignePrixRequest;
 import com.buildflow.erp.domain.achats.dto.response.AchatResponse;
 import com.buildflow.erp.domain.achats.entity.Achat;
 import com.buildflow.erp.domain.achats.entity.AchatStatut;
@@ -39,6 +43,7 @@ public class AchatServiceImpl implements AchatService {
     private final ArticleRepository articleRepository;
     private final BpuLigneRepository bpuLigneRepository;
     private final AchatMapper achatMapper;
+    private final CodeGenerator codeGenerator;
     private final StockService stockService;
     private final TresorerieService tresorerieService;
 
@@ -47,10 +52,6 @@ public class AchatServiceImpl implements AchatService {
     @Override
     @Transactional
     public AchatResponse create(CreateAchatRequest request) {
-        if (achatRepository.existsByRef(request.ref())) {
-            throw new BusinessRuleException("An Achat with ref '" + request.ref() + "' already exists");
-        }
-
         Fournisseur fournisseur = fournisseurRepository.findById(request.fournisseurId())
                 .orElseThrow(() -> new ResourceNotFoundException("Fournisseur", request.fournisseurId()));
 
@@ -58,11 +59,13 @@ public class AchatServiceImpl implements AchatService {
                 .orElseThrow(() -> new ResourceNotFoundException("Chantier", request.chantierId()));
 
         Achat achat = new Achat();
-        achat.setRef(request.ref());
+        achat.setRef(codeGenerator.next(CodeSequence.ACHAT));
         achat.setFournisseur(fournisseur);
         achat.setChantier(chantier);
         achat.setDateCommande(request.dateCommande());
         achat.setDateLivraisonPrevue(request.dateLivraisonPrevue());
+        achat.setImpactAnalytiqueChantier(Boolean.TRUE.equals(request.impactAnalytiqueChantier()));
+        achat.setImpactComptableFiscal(Boolean.TRUE.equals(request.impactComptableFiscal()));
 
         BigDecimal totalHt = BigDecimal.ZERO;
 
@@ -84,7 +87,10 @@ public class AchatServiceImpl implements AchatService {
                 ligne.setBpuLigne(bpuLigne);
             }
 
-            BigDecimal ligneTotal = ligneReq.quantite().multiply(ligneReq.prixUnitaire()).setScale(2, RoundingMode.HALF_UP);
+            // Price is a double now; convert once for the exact total.
+            BigDecimal ligneTotal = ligneReq.quantite()
+                    .multiply(BigDecimal.valueOf(ligneReq.prixUnitaire()))
+                    .setScale(2, RoundingMode.HALF_UP);
             ligne.setTotal(ligneTotal);
 
             totalHt = totalHt.add(ligneTotal);
@@ -157,9 +163,89 @@ public class AchatServiceImpl implements AchatService {
 
         // CROSS-DOMAIN SIDE EFFECT: Debit the chantier's caisse
         tresorerieService.debiterPourAchat(
-                achat.getChantier().getId(), achat.getTtc(), achat.getRef());
+                achat.getChantier().getId(), achat.getTtc(), achat.getRef(),
+                achat.isImpactAnalytiqueChantier(), achat.isImpactComptableFiscal());
 
         return achatMapper.toResponse(achatRepository.save(achat));
+    }
+
+    @Override
+    @Transactional
+    public AchatResponse updateIndicateurs(UUID id, UpdateIndicateursRequest request) {
+        Achat achat = findEntityById(id);
+
+        // Null = "leave unchanged", so a single checkbox can be toggled alone.
+        if (request.impactAnalytiqueChantier() != null) {
+            achat.setImpactAnalytiqueChantier(request.impactAnalytiqueChantier());
+        }
+        if (request.impactComptableFiscal() != null) {
+            achat.setImpactComptableFiscal(request.impactComptableFiscal());
+        }
+
+        return achatMapper.toResponse(achatRepository.save(achat));
+    }
+
+    /**
+     * Re-prices one line of a purchase order and rolls the change up into the
+     * order's HT / TVA / TTC.
+     *
+     * <p>Allowed at every statut, by product decision. Two consequences the
+     * caller has to live with, and which {@link #repricingWarning} surfaces
+     * rather than hiding:
+     * <ul>
+     *   <li>at {@code FACTURE}, the recorded invoice total no longer matches
+     *       the order;</li>
+     *   <li>at {@code PAYE}, the caisse was already debited for the old TTC, so
+     *       the cash ledger is now short or over by the difference and needs a
+     *       manual adjusting entry.</li>
+     * </ul>
+     * Stock is unaffected — provisioning keys off quantity, not price.
+     */
+    @Override
+    @Transactional
+    public AchatResponse updateLignePrix(UUID achatId, UUID ligneId, UpdateLignePrixRequest request) {
+        Achat achat = findEntityById(achatId);
+
+        LigneAchat ligne = achat.getLignes().stream()
+                .filter(l -> l.getId().equals(ligneId))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("LigneAchat", ligneId));
+
+        ligne.setPrixUnitaire(request.prixUnitaire());
+        ligne.setTotal(ligne.getQuantite()
+                .multiply(BigDecimal.valueOf(request.prixUnitaire()))
+                .setScale(2, RoundingMode.HALF_UP));
+
+        recomputeTotals(achat);
+
+        return achatMapper.toResponse(achatRepository.save(achat));
+    }
+
+    /**
+     * Message warning that re-pricing has left something downstream out of step,
+     * or {@code null} when nothing downstream has happened yet.
+     */
+    public static String repricingWarning(AchatStatut statut) {
+        return switch (statut) {
+            case EN_COURS, LIVRE -> null;
+            case FACTURE -> "Prix mis à jour. La facture déjà enregistrée pour cette commande "
+                    + "ne correspond plus au nouveau montant : vérifiez-la.";
+            case PAYE -> "Prix mis à jour. Cette commande était déjà payée : la caisse a été débitée "
+                    + "de l'ancien montant TTC. Enregistrez une opération d'ajustement pour la différence.";
+        };
+    }
+
+    /** Recomputes HT / TVA / TTC from the order's lines. */
+    private void recomputeTotals(Achat achat) {
+        BigDecimal totalHt = achat.getLignes().stream()
+                .map(LigneAchat::getTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal tva = totalHt.multiply(TVA_RATE).setScale(2, RoundingMode.HALF_UP);
+
+        achat.setHt(totalHt);
+        achat.setTva(tva);
+        achat.setTtc(totalHt.add(tva));
     }
 
     private Achat findEntityById(UUID id) {

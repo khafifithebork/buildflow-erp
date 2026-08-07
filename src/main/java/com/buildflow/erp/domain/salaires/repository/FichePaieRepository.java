@@ -19,6 +19,8 @@ public interface FichePaieRepository extends JpaRepository<FichePaie, UUID> {
     List<FichePaie> findByStatut(FichePaieStatut statut);
     List<FichePaie> findByPeriodeAndStatut(String periode, FichePaieStatut statut);
 
+    long countByChantierId(UUID chantierId);
+
     @Query("""
             SELECT COALESCE(SUM(f.netAPayer), 0) FROM FichePaie f
             WHERE f.bpuLigne.id = :bpuLigneId

@@ -10,6 +10,6 @@ public record AttachementLigneResponse(
         String bpuLigneDesignation,
         BigDecimal ancienCumul,
         BigDecimal nouveauCumul,
-        BigDecimal puHt,
+        double puHt,
         BigDecimal montantHt
 ) {}

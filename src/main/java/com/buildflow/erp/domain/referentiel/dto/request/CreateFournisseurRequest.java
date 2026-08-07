@@ -6,7 +6,6 @@ import jakarta.validation.constraints.NotBlank;
 import java.util.List;
 
 public record CreateFournisseurRequest(
-        @NotBlank String code,
         @NotBlank String raisonSociale,
         String ice,
         String contact,

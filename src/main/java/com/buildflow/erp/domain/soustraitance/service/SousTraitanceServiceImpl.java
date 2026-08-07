@@ -1,5 +1,7 @@
 package com.buildflow.erp.domain.soustraitance.service;
 
+import com.buildflow.erp.common.code.CodeGenerator;
+import com.buildflow.erp.common.code.CodeSequence;
 import com.buildflow.erp.common.exception.BusinessRuleException;
 import com.buildflow.erp.common.exception.ConflictException;
 import com.buildflow.erp.common.exception.ResourceNotFoundException;
@@ -48,6 +50,7 @@ public class SousTraitanceServiceImpl implements SousTraitanceService {
     private final BpuLigneRepository bpuLigneRepository;
     private final SousTraitanceMapper mapper;
     private final TresorerieService tresorerieService;
+    private final CodeGenerator codeGenerator;
 
     private static final BigDecimal TVA_RATE = new BigDecimal("0.20");
 
@@ -56,10 +59,6 @@ public class SousTraitanceServiceImpl implements SousTraitanceService {
     @Override
     @Transactional
     public ContratSousTraitantResponse createContrat(CreateContratRequest request) {
-        if (contratRepository.existsByReference(request.reference())) {
-            throw new ConflictException("A contrat with reference '" + request.reference() + "' already exists");
-        }
-
         SousTraitant st = sousTraitantRepository.findById(request.sousTraitantId())
                 .orElseThrow(() -> new ResourceNotFoundException("SousTraitant", request.sousTraitantId()));
 
@@ -67,7 +66,7 @@ public class SousTraitanceServiceImpl implements SousTraitanceService {
                 .orElseThrow(() -> new ResourceNotFoundException("Chantier", request.chantierId()));
 
         ContratSousTraitant contrat = new ContratSousTraitant();
-        contrat.setReference(request.reference());
+        contrat.setReference(codeGenerator.next(CodeSequence.CONTRAT_SOUS_TRAITANT));
         contrat.setSousTraitant(st);
         contrat.setChantier(chantier);
         contrat.setObjet(request.objet());
@@ -181,10 +180,6 @@ public class SousTraitanceServiceImpl implements SousTraitanceService {
             throw new BusinessRuleException("Cannot add payment to a contract that is '" + contrat.getStatut() + "'");
         }
 
-        if (paiementRepository.existsByReference(request.reference())) {
-            throw new ConflictException("A paiement with reference '" + request.reference() + "' already exists");
-        }
-
         // Validate payment doesn't exceed remaining amount
         BigDecimal resteAPayer = contrat.getMontantTtc().subtract(contrat.getMontantPaye());
         if (request.montant().compareTo(resteAPayer) > 0) {
@@ -194,7 +189,7 @@ public class SousTraitanceServiceImpl implements SousTraitanceService {
         }
 
         PaiementSousTraitant paiement = new PaiementSousTraitant();
-        paiement.setReference(request.reference());
+        paiement.setReference(codeGenerator.next(CodeSequence.PAIEMENT_SOUS_TRAITANT));
         paiement.setContrat(contrat);
         paiement.setMontant(request.montant());
         paiement.setMotif(request.motif());
@@ -253,7 +248,11 @@ public class SousTraitanceServiceImpl implements SousTraitanceService {
         tresorerieService.debiterPourAchat(
                 contrat.getChantier().getId(),
                 paiement.getMontant(),
-                "ST-" + paiement.getReference());
+                "ST-" + paiement.getReference(),
+                // Subcontractor payments carry no purchase-level indicators yet;
+                // finance ticks them from the Caisse view if applicable.
+                false,
+                false);
 
         log.info("Paiement {} paid: {} MAD for contrat {} (sous-traitant: {})",
                 paiement.getReference(), paiement.getMontant(),

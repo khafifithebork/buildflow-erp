@@ -32,8 +32,10 @@ public class BpuLigne extends BaseEntity {
     @Column(name = "qte_prevue", nullable = false, precision = 15, scale = 3)
     private BigDecimal qtePrevue;
 
-    @Column(name = "pu_ht", nullable = false, precision = 15, scale = 2)
-    private BigDecimal puHt;
+    // DOUBLE PRECISION: a unit price may carry more than two decimals. The
+    // budget below stays BigDecimal — that is the figure that gets committed.
+    @Column(name = "pu_ht", nullable = false)
+    private double puHt;
 
     @Column(name = "budget_prevu_ht", nullable = false, precision = 15, scale = 2)
     private BigDecimal budgetPrevuHt;

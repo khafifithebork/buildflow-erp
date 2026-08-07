@@ -13,6 +13,9 @@ import java.util.UUID;
 public interface CaisseTransactionRepository extends JpaRepository<CaisseTransaction, UUID> {
     List<CaisseTransaction> findByCaisseIdOrderByCreatedAtDesc(UUID caisseId);
 
+    /** Cash operations booked against any caisse of a given chantier. */
+    long countByCaisse_ChantierId(UUID chantierId);
+
     @Query("""
             SELECT COALESCE(SUM(t.montant), 0) FROM CaisseTransaction t
             WHERE t.bpuLigne.id = :bpuLigneId

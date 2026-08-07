@@ -55,6 +55,14 @@ public class Achat extends BaseEntity {
     @Column(name = "facture_ref", length = 50)
     private String factureRef;
 
+    /** "L'achat a-t-il réellement servi au chantier ?" — analytic (site cost) impact. */
+    @Column(name = "impact_analytique_chantier", nullable = false)
+    private boolean impactAnalytiqueChantier = false;
+
+    /** "Y a-t-il une facture officielle à déclarer ?" — accounting/tax impact. */
+    @Column(name = "impact_comptable_fiscal", nullable = false)
+    private boolean impactComptableFiscal = false;
+
     @OneToMany(mappedBy = "achat", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<LigneAchat> lignes = new ArrayList<>();
 }

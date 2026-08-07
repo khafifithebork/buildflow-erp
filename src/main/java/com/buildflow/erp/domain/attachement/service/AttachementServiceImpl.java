@@ -1,5 +1,7 @@
 package com.buildflow.erp.domain.attachement.service;
 
+import com.buildflow.erp.common.code.CodeGenerator;
+import com.buildflow.erp.common.code.CodeSequence;
 import com.buildflow.erp.common.exception.BusinessRuleException;
 import com.buildflow.erp.common.exception.ResourceNotFoundException;
 import com.buildflow.erp.domain.attachement.dto.request.CreateAttachementLigneRequest;
@@ -33,6 +35,7 @@ public class AttachementServiceImpl implements AttachementService {
     private final AttachementLigneRepository attachementLigneRepository;
     private final BpuLigneRepository bpuLigneRepository;
     private final ChantierRepository chantierRepository;
+    private final CodeGenerator codeGenerator;
 
     private static final BigDecimal TVA_RATE = new BigDecimal("0.20");
 
@@ -42,14 +45,9 @@ public class AttachementServiceImpl implements AttachementService {
         Chantier chantier = chantierRepository.findById(chantierId)
                 .orElseThrow(() -> new ResourceNotFoundException("Chantier", chantierId));
 
-        if (attachementRepository.existsByChantierIdAndReference(chantierId, request.reference())) {
-            throw new BusinessRuleException(
-                    "Un attachement avec la référence '" + request.reference() + "' existe déjà pour ce chantier");
-        }
-
         Attachement attachement = new Attachement();
         attachement.setChantier(chantier);
-        attachement.setReference(request.reference());
+        attachement.setReference(codeGenerator.next(CodeSequence.ATTACHEMENT));
         attachement.setDateAttachement(request.dateAttachement());
         attachement.setStatut(AttachementStatut.SOUMIS);
 
@@ -82,7 +80,7 @@ public class AttachementServiceImpl implements AttachementService {
             }
 
             BigDecimal ligneMontantHt = nouveauCumul.subtract(ancienCumul)
-                    .multiply(bpuLigne.getPuHt())
+                    .multiply(BigDecimal.valueOf(bpuLigne.getPuHt()))
                     .setScale(2, RoundingMode.HALF_UP);
 
             AttachementLigne ligne = new AttachementLigne();

@@ -1,5 +1,6 @@
 package com.buildflow.erp.domain.tresorerie.service;
 
+import com.buildflow.erp.common.dto.UpdateIndicateursRequest;
 import com.buildflow.erp.common.exception.BusinessRuleException;
 import com.buildflow.erp.common.exception.ConflictException;
 import com.buildflow.erp.common.exception.ResourceNotFoundException;
@@ -40,15 +41,11 @@ public class TresorerieServiceImpl implements TresorerieService {
     @Override
     @Transactional
     public CaisseResponse createCaisse(CreateCaisseRequest request) {
-        if (caisseRepository.existsByCode(request.code())) {
-            throw new ConflictException("A caisse with code '" + request.code() + "' already exists");
-        }
-
         Chantier chantier = chantierRepository.findById(request.chantierId())
                 .orElseThrow(() -> new ResourceNotFoundException("Chantier", request.chantierId()));
 
         Caisse caisse = new Caisse();
-        caisse.setCode(request.code());
+        caisse.setCode(deriveCaisseCode(chantier));
         caisse.setLibelle(request.libelle());
         caisse.setChantier(chantier);
         caisse.setSeuilMinimum(request.seuilMinimum());
@@ -84,11 +81,35 @@ public class TresorerieServiceImpl implements TresorerieService {
                     .orElseThrow(() -> new ResourceNotFoundException("BpuLigne", request.bpuLigneId()));
         }
 
-        applyTransaction(caisse, request.typeTransaction(), request.montant(),
-                request.motif(), request.referenceDocument(), bpuLigne);
+        CaisseTransaction created = applyTransaction(caisse, request.typeTransaction(), request.montant(),
+                request.motif(), request.referenceDocument(), bpuLigne,
+                Boolean.TRUE.equals(request.impactAnalytiqueChantier()),
+                Boolean.TRUE.equals(request.impactComptableFiscal()));
 
-        List<CaisseTransaction> txns = transactionRepository.findByCaisseIdOrderByCreatedAtDesc(caisseId);
-        return caisseMapper.toTransactionResponse(txns.getFirst());
+        return caisseMapper.toTransactionResponse(created);
+    }
+
+    @Override
+    @Transactional
+    public CaisseTransactionResponse updateTransactionIndicateurs(
+            UUID caisseId, UUID transactionId, UpdateIndicateursRequest request) {
+
+        CaisseTransaction txn = transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new ResourceNotFoundException("CaisseTransaction", transactionId));
+
+        if (!txn.getCaisse().getId().equals(caisseId)) {
+            throw new ResourceNotFoundException("CaisseTransaction", transactionId);
+        }
+
+        // Null = "leave unchanged", so a single checkbox can be toggled alone.
+        if (request.impactAnalytiqueChantier() != null) {
+            txn.setImpactAnalytiqueChantier(request.impactAnalytiqueChantier());
+        }
+        if (request.impactComptableFiscal() != null) {
+            txn.setImpactComptableFiscal(request.impactComptableFiscal());
+        }
+
+        return caisseMapper.toTransactionResponse(transactionRepository.save(txn));
     }
 
     @Override
@@ -104,7 +125,8 @@ public class TresorerieServiceImpl implements TresorerieService {
 
     @Override
     @Transactional
-    public void debiterPourAchat(UUID chantierId, BigDecimal montant, String achatRef) {
+    public void debiterPourAchat(UUID chantierId, BigDecimal montant, String achatRef,
+                                 boolean impactAnalytiqueChantier, boolean impactComptableFiscal) {
 
         Caisse caisse = getOrCreateCaisse(chantierId);
 
@@ -114,7 +136,9 @@ public class TresorerieServiceImpl implements TresorerieService {
                 montant,
                 "Paiement achat",
                 achatRef,
-                null
+                null,
+                impactAnalytiqueChantier,
+                impactComptableFiscal
         );
     }
 
@@ -130,10 +154,35 @@ public class TresorerieServiceImpl implements TresorerieService {
                 montant,
                 "Paiement salaire",
                 reference,
-                null
+                null,
+                // Payroll is not a purchase: neither indicator applies by default.
+                // Finance can still tick them afterwards from the Caisse view.
+                false,
+                false
         );
     }
     // ── Private ────────────────────────────────────────────────────
+
+    /**
+     * A caisse is named after the chantier it belongs to — {@code CAISSE-CH-2026-001}
+     * says far more at a glance than a bare running number would.
+     *
+     * <p>Chantier creation auto-provisions the first one, so the base name is
+     * normally free; a chantier given a second caisse gets {@code …-2}, {@code …-3}.
+     */
+    private String deriveCaisseCode(Chantier chantier) {
+        String base = "CAISSE-" + chantier.getCode();
+        if (!caisseRepository.existsByCode(base)) {
+            return base;
+        }
+        for (int suffix = 2; suffix < 1000; suffix++) {
+            String candidate = base + "-" + suffix;
+            if (!caisseRepository.existsByCode(candidate)) {
+                return candidate;
+            }
+        }
+        throw new ConflictException("Impossible de générer un code de caisse pour le chantier " + chantier.getCode());
+    }
 
     private Caisse getOrCreateCaisse(UUID chantierId) {
 
@@ -158,8 +207,9 @@ public class TresorerieServiceImpl implements TresorerieService {
                 });
     }
 
-    private void applyTransaction(Caisse caisse, TypeTransaction type, BigDecimal montant,
-                                  String motif, String referenceDocument, BpuLigne bpuLigne) {
+    private CaisseTransaction applyTransaction(Caisse caisse, TypeTransaction type, BigDecimal montant,
+                                               String motif, String referenceDocument, BpuLigne bpuLigne,
+                                               boolean impactAnalytiqueChantier, boolean impactComptableFiscal) {
         if (type == TypeTransaction.DEBIT) {
             BigDecimal newSolde = caisse.getSolde().subtract(montant);
             if (newSolde.compareTo(BigDecimal.ZERO) < 0) {
@@ -187,6 +237,8 @@ public class TresorerieServiceImpl implements TresorerieService {
         txn.setMotif(motif);
         txn.setReferenceDocument(referenceDocument);
         txn.setBpuLigne(bpuLigne);
-        transactionRepository.save(txn);
+        txn.setImpactAnalytiqueChantier(impactAnalytiqueChantier);
+        txn.setImpactComptableFiscal(impactComptableFiscal);
+        return transactionRepository.save(txn);
     }
 }

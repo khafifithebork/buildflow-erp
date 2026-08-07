@@ -50,7 +50,10 @@ public class DashboardServiceImpl implements DashboardService {
         BigDecimal paieAPayerNet = round(fichePaieRepository.sumNetAPayerNonPayees());
         BigDecimal attachementsEnCoursTtc = round(attachementRepository.sumTtcSoumis());
         BigDecimal attachementsEnCoursHt = round(attachementRepository.sumHtSoumis());
-        BigDecimal valeurStocksGlobaleHt = round(stockArticleRepository.sumValeurStockHt());
+        // Stock valuation comes back as a double (prices are DOUBLE PRECISION);
+        // pin it to two decimals here, where it becomes a money figure.
+        BigDecimal valeurStocksGlobaleHt = round(
+                BigDecimal.valueOf(stockArticleRepository.sumValeurStockHt()));
 
         // ── Flow KPIs (scoped to `month`, or all-time when absent) ───
         BigDecimal decaissementsCaisseTtc = round(caisseTransactionRepository.sumDebitsBetween(dtStart, dtEnd));

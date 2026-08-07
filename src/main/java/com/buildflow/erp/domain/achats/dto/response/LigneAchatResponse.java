@@ -9,7 +9,7 @@ public record LigneAchatResponse(
         String designation,
         BigDecimal quantite,
         String unite,
-        BigDecimal prixUnitaire,
+        double prixUnitaire,
         BigDecimal total,
         String bpuLigneRef
 ) {}

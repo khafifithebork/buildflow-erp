@@ -161,6 +161,53 @@ Endpoints returning paginated data use `?page=0&size=20&sort=field,asc`:
 }
 ```
 
+### Money and precision
+
+| Kind | Type | Why |
+|------|------|-----|
+| Unit prices — `prix_unitaire`, `prix_achat_ref`, `pu_ht` | `DOUBLE PRECISION` | A rate may need more than two decimals (per kg, per m³, per ml) |
+| Everything else — line totals, HT/TVA/TTC, caisse balances, salaries, contract amounts | `DECIMAL(15,2)` | These are invoiced, paid and reconciled, so they must stay exact |
+
+A unit price feeds a total that is still rounded HALF_UP to two decimals, so the
+extra precision is used in the calculation without leaking sub-centime values
+into the ledger.
+
+> `DOUBLE PRECISION` is binary floating point: `0.1` is stored approximately and
+> repeated sums drift. Do not compare prices for exact equality, and do not
+> extend the type to columns that are summed into a balance.
+
+### Entity codes
+
+Codes, références and matricules are **assigned by the server** on create.
+Clients do not send them — the field is absent from every `Create…Request` — and
+they never change afterwards, so `PUT` ignores them too.
+
+| Entity | Format | Counter resets |
+|--------|--------|----------------|
+| Fournisseur | `FRN-001` | never |
+| Sous-traitant | `ST-001` | never |
+| Employé (matricule) | `EMP-001` | never |
+| Article | `ART-001` | never |
+| Catégorie article | `CAT-001` | never |
+| Chantier | `CH-2026-001` | each year |
+| Achat (ref) | `ACH-2026-001` | each year |
+| Contrat sous-traitance | `CST-2026-001` | each year |
+| Paiement sous-traitant | `PAI-2026-001` | each year |
+| Attachement | `ATT-2026-001` | each year |
+| Fiche de paie | `FDP-2026-07-001` | each payroll period |
+| Caisse | `CAISSE-<code chantier>` | derived from the chantier |
+
+Counters live in the `code_sequences` table, one row per scope, allocated with a
+single atomic `INSERT … ON CONFLICT DO UPDATE … RETURNING`. Allocation joins the
+caller's transaction, so a failed create releases its number instead of burning
+it. Migration `032` seeds every counter above the highest number already in use,
+so generated codes cannot collide with records that predate the feature.
+
+> **Exception — `bpu_lignes.ref` stays hand-entered.** Those refs (`1.1`,
+> `1.1.a`, …) are transcribed from the client's tender document and are how a
+> line is reconciled against it; `BpuExcelParser` exists specifically to preserve
+> them on import.
+
 ---
 
 ### 5.1 Authentication — `/api/v1/auth`
@@ -194,10 +241,10 @@ Roles: `ADMIN`, `DIRECTEUR`, `CHEF_CHANTIER`, `MAGASINIER`, `RH`, `FINANCE`, `PM
 
 **Create Request:**
 ```json
-{ "code": "MAT", "libelle": "Matériaux de construction", "parentId": null }
+{ "libelle": "Matériaux de construction", "parentId": null }
 ```
 
-**Response:** `{ "id": "uuid", "code": "MAT", "libelle": "...", "parentId": null }`
+**Response:** `{ "id": "uuid", "code": "CAT-001", "libelle": "...", "parentId": null }` — `code` is server-assigned.
 
 ---
 
@@ -212,7 +259,7 @@ Roles: `ADMIN`, `DIRECTEUR`, `CHEF_CHANTIER`, `MAGASINIER`, `RH`, `FINANCE`, `PM
 **Create Request:**
 ```json
 {
-  "code": "CIM-50", "designation": "Ciment CPJ 45 - Sac 50kg",
+  "designation": "Ciment CPJ 45 - Sac 50kg",
   "description": "Ciment Portland composé", "categorieId": "uuid",
   "unite": "SAC", "prixAchatRef": 75.00, "tvaRate": 20.00,
   "fournisseursPreferentiels": ["LAFARGE", "CIMAR"]
@@ -251,14 +298,17 @@ Statuts: `ACTIF`, `INACTIF`, `BLACKLISTE`
 
 | Method | Endpoint | Roles | Description |
 |--------|----------|-------|-------------|
-| `POST` | `/` | `ADMIN`, `DIRECTEUR`, `PM`, `CHEF_CHANTIER` | Create site |
+| `POST` | `/` | `ADMIN`, `DIRECTEUR`, `PM`, `CHEF_CHANTIER` | Create site (auto-provisions its Caisse) |
+| `PUT` | `/{id}` | `ADMIN`, `DIRECTEUR`, `PM`, `CHEF_CHANTIER` | Update site |
+| `PATCH` | `/{id}/demarrer` | `ADMIN`, `DIRECTEUR`, `PM`, `CHEF_CHANTIER` | `EN_PREPARATION` → `EN_COURS` |
+| `DELETE` | `/{id}` | `ADMIN`, `DIRECTEUR` | Delete site (see rules below) |
 | `GET` | `/{id}` | Authenticated | Get by ID |
 | `GET` | `/` | Authenticated | List all |
 
-**Create Request:**
+**Create Request:** (`code` is server-assigned)
 ```json
 {
-  "code": "CH-2026-001", "nom": "Résidence Al Firdaws", "client": "Groupe Addoha",
+  "nom": "Résidence Al Firdaws", "client": "Groupe Addoha",
   "adresse": "Lot 23, Zone Tamaris", "ville": "Casablanca", "statut": "EN_COURS",
   "dateDebut": "2026-01-15", "dateFin": "2027-06-30", "budgetHt": 15000000.00,
   "chefProjetNom": "Karim Alaoui", "soustraitantsActifs": ["ElectroPro"],
@@ -268,6 +318,24 @@ Statuts: `ACTIF`, `INACTIF`, `BLACKLISTE`
 
 Statuts: `EN_PREPARATION`, `EN_COURS`, `EN_PAUSE`, `TERMINE`, `ANNULE`
 Jalon Statuts: `A_FAIRE`, `EN_COURS`, `TERMINE`, `EN_RETARD`
+
+#### Deletion rules
+
+`POST /` auto-provisions a Caisse for each new chantier, so a chantier always has
+at least one child row. `DELETE /{id}` therefore applies explicit rules rather
+than relying on the database:
+
+| Related data | Behaviour |
+|--------------|-----------|
+| Jalons, lignes BPU | Deleted with the chantier |
+| Caisse with **no** operations | Deleted with the chantier |
+| Employés (`chantierActuel`) | Unlinked (set to `NULL`) |
+| Achats, opérations de caisse, fiches de paie, contrats de sous-traitance, attachements, lignes de stock | **Blocked** — `409` naming what to remove first |
+
+The `409` body is an RFC 7807 `ProblemDetail` whose `detail` lists the blocking
+records, e.g. *"Ce chantier ne peut pas être supprimé : il est encore référencé
+par 3 commandes d'achat, 1 opération de caisse. Supprimez ou réaffectez ces
+éléments avant de réessayer."*
 
 ---
 
@@ -282,7 +350,7 @@ Jalon Statuts: `A_FAIRE`, `EN_COURS`, `TERMINE`, `EN_RETARD`
 **Create Request:**
 ```json
 {
-  "matricule": "EMP-001", "nom": "Benjelloun", "prenom": "Omar",
+  "nom": "Benjelloun", "prenom": "Omar",
   "role": "CHEF_EQUIPE", "poste": "Chef d'équipe maçonnerie",
   "departement": "Production", "telephone": "+212 661 234567",
   "email": "omar.b@buildflow.ma", "dateEmbauche": "2024-03-15",
@@ -307,7 +375,7 @@ TypeContrat: `CDI`, `CDD`, `ANAPEC`, `JOURNALIER`
 **Create Request:**
 ```json
 {
-  "code": "ST-001", "raisonSociale": "ElectroPro SARL", "ice": "002345678000015",
+  "raisonSociale": "ElectroPro SARL", "ice": "002345678000015",
   "specialite": "Electricité BT/HT", "contact": "Youssef Tahiri",
   "telephone": "+212 661 987654", "email": "contact@electropro.ma",
   "ville": "Rabat", "adresse": "Avenue Mohammed V", "statut": "ACTIF"
@@ -328,19 +396,78 @@ Response includes auto-updated: `nombreContratsActifs`, `montantTotalPaye`
 | `PATCH` | `/{id}/validate-bl?bonLivraisonRef=BL-001` | `ADMIN`, `ACHAT`, `PM` | Confirm delivery → Stock provisioned |
 | `PATCH` | `/{id}/validate-facture?factureRef=FA-001` | `ADMIN`, `FINANCE` | Record invoice |
 | `PATCH` | `/{id}/validate-paiement` | `ADMIN`, `FINANCE` | Pay → Caisse debited |
+| `PATCH` | `/{id}/indicateurs` | `ADMIN`, `ACHAT`, `FINANCE` | Toggle the billing indicators |
+| `PATCH` | `/{id}/lignes/{ligneId}/prix` | `ADMIN`, `ACHAT`, `FINANCE` | Re-price one order line |
 
-**Create Request:**
+**Create Request:** (`ref` is server-assigned — see [Entity codes](#entity-codes))
 ```json
 {
-  "ref": "ACH-2026-001", "fournisseurId": "uuid", "chantierId": "uuid",
+  "fournisseurId": "uuid", "chantierId": "uuid",
   "dateCommande": "2026-07-01", "dateLivraisonPrevue": "2026-07-10",
-  "lignes": [{ "articleId": "uuid", "quantite": 100.000, "prixUnitaire": 75.00 }]
+  "lignes": [{ "articleId": "uuid", "quantite": 100.000, "prixUnitaire": 75.00 }],
+  "impactAnalytiqueChantier": true,
+  "impactComptableFiscal": false
 }
 ```
 
-**Response includes:** `ht`, `tva` (20%), `ttc` (server-computed), `lignes[]` with snapshots of article data, `bonLivraisonRef`, `factureRef`
+#### Re-pricing a line
 
-Statut Flow: `EN_COURS` → `LIVRE` → `FACTURE` → `PAYE`
+```json
+PATCH /api/v1/achats/{id}/lignes/{ligneId}/prix
+{ "prixUnitaire": 90.50 }
+```
+
+The line total and the order's HT/TVA/TTC are recomputed and the whole updated
+order is returned. Permitted at **every** statut; the envelope's `message` says
+what that leaves out of step downstream:
+
+| Statut | `message` |
+|--------|-----------|
+| `EN_COURS`, `LIVRE` | `null` — nothing downstream has happened |
+| `FACTURE` | the recorded invoice no longer matches the order |
+| `PAYE` | the caisse was debited for the **old** TTC; post an adjusting entry for the difference |
+
+Stock is unaffected either way — provisioning keys off quantity, not price.
+
+**Response includes:** `ht`, `tva` (20%), `ttc` (server-computed), `lignes[]` with snapshots of article data, `bonLivraisonRef`, `factureRef`, `impactAnalytiqueChantier`, `impactComptableFiscal`
+
+#### Operational billing indicators
+
+Both flags are optional on create and default to `false`.
+
+| Field | Question shown in the UI | Meaning |
+|-------|--------------------------|---------|
+| `impactAnalytiqueChantier` | *L'achat a-t-il réellement servi au chantier ?* | The spend belongs in the site's analytic cost |
+| `impactComptableFiscal` | *Y a-t-il une facture officielle à déclarer ?* | An official invoice exists and must be declared |
+
+`PATCH /{id}/indicateurs` takes a partial body — omitting a field leaves it unchanged:
+
+```json
+{ "impactComptableFiscal": true }
+```
+
+The same two fields exist on cash operations (see Trésorerie). When an achat is paid,
+the generated caisse debit inherits the achat's two flags.
+
+#### Statut flow — strictly sequential, no step may be skipped
+
+`EN_COURS` → `LIVRE` → `FACTURE` → `PAYE`
+
+| Transition | Roles | Data required | Automatic effect |
+|------------|-------|---------------|------------------|
+| `EN_COURS` → `LIVRE` | `ADMIN`, `ACHAT`, `PM` | bon de livraison ref | Provisions the chantier's stock (one `ENTREE` per line, traced on the order ref) |
+| `LIVRE` → `FACTURE` | `ADMIN`, `FINANCE` | facture ref | None |
+| `FACTURE` → `PAYE` | `ADMIN`, `FINANCE` | — | Debits the chantier's caisse by the TTC |
+
+Before settling, the caisse balance must be ≥ the order TTC, otherwise `422`
+`Insufficient funds in caisse '…'. Solde: X, Debit: Y`. Credit the caisse first.
+
+Out-of-order calls return `422`, e.g. `Cannot FACTURE an Achat that is currently
+'EN_COURS'. Expected status: 'LIVRE'`.
+
+All three transitions are driven from the Actions column of the Achats table,
+which offers only the one step valid at the row's current statut and only to
+roles the server would accept.
 
 ---
 
@@ -361,6 +488,27 @@ Statut Flow: `EN_COURS` → `LIVRE` → `FACTURE` → `PAYE`
 
 > Stock is auto-provisioned when an Achat transitions to LIVRE. No manual creation endpoint.
 
+#### `seuilAlerte` and `enAlerte`
+
+`enAlerte` is computed in `StockMapper`:
+
+```
+enAlerte = quantiteTheorique <= seuilAlerte  AND  seuilAlerte > 0
+```
+
+The `> 0` guard is deliberate: a threshold of `0` means *no threshold set*, not
+*alert on everything*.
+
+> ⚠️ **`seuilAlerte` is never populated.** A `StockArticle` is created with the
+> field at `0` (entity initialiser and column default), and nothing writes to it
+> — there is no field on any request DTO and no update endpoint. The guard above
+> is therefore always false, so **`enAlerte` is always `false`**, the column
+> always reads `0`, and the "Alertes seuil" KPI is always `0`.
+>
+> The formula is correct; what is missing is a way to set the threshold. Making
+> the feature live needs either an editable field per stock line or a default on
+> the catalogue `Article` copied onto each line.
+
 ---
 
 ### 5.10 Trésorerie (Cash Registers) — `/api/v1/caisses`
@@ -372,20 +520,29 @@ Statut Flow: `EN_COURS` → `LIVRE` → `FACTURE` → `PAYE`
 | `GET` | `/{id}` | `ADMIN`, `FINANCE`, `DIRECTEUR`, `CHEF_CHANTIER` | Get by ID (includes transactions) |
 | `POST` | `/{id}/transactions` | `ADMIN`, `FINANCE` | Credit or debit |
 | `GET` | `/{id}/transactions` | `ADMIN`, `FINANCE`, `DIRECTEUR` | Transaction history |
+| `PATCH` | `/{id}/transactions/{transactionId}/indicateurs` | `ADMIN`, `FINANCE` | Toggle the billing indicators |
 
 **Create Caisse:**
 ```json
-{ "code": "CAISSE-CH001", "libelle": "Caisse chantier Al Firdaws", "chantierId": "uuid", "seuilMinimum": 50000.00 }
+{ "libelle": "Caisse chantier Al Firdaws", "chantierId": "uuid", "seuilMinimum": 50000.00 }
 ```
 
 **Create Transaction:**
 ```json
-{ "typeTransaction": "CREDIT", "montant": 200000.00, "motif": "Approvisionnement initial", "referenceDocument": "VIR-001" }
+{
+  "typeTransaction": "CREDIT", "montant": 200000.00,
+  "motif": "Approvisionnement initial", "referenceDocument": "VIR-001",
+  "impactAnalytiqueChantier": false,
+  "impactComptableFiscal": false
+}
 ```
 
 TypeTransaction: `CREDIT`, `DEBIT`
 
 > DEBIT rejected if balance would go negative → `422`
+
+Cash operations carry the same two optional billing indicators as achats
+(both default to `false`) — see [Achats](#58-achats-purchase-orders--apiv1achats).
 
 ---
 
@@ -402,7 +559,7 @@ TypeTransaction: `CREDIT`, `DEBIT`
 **Create Request:**
 ```json
 {
-  "reference": "FDP-2026-07-001", "employeId": "uuid", "chantierId": "uuid",
+  "employeId": "uuid", "chantierId": "uuid",
   "periode": "2026-07", "joursTravailles": 26, "salaireBase": 8500.00,
   "heuresSupplementaires": 12.00, "montantHeuresSupp": 750.00,
   "primeTransport": 500.00, "primePanier": 650.00, "autresPrimes": 0.00,
@@ -432,7 +589,7 @@ Statut Flow: `BROUILLON` → `VALIDEE` → `PAYEE`
 **Create Contract:**
 ```json
 {
-  "reference": "CST-2026-001", "sousTraitantId": "uuid", "chantierId": "uuid",
+  "sousTraitantId": "uuid", "chantierId": "uuid",
   "objet": "Lot Electricité - Résidence Al Firdaws",
   "montantHt": 450000.00, "dateDebut": "2026-03-01", "dateFin": "2026-12-31"
 }
@@ -442,7 +599,7 @@ TVA/TTC computed server-side. Response includes `resteAPayer` (computed: `montan
 
 **Create Payment:**
 ```json
-{ "reference": "PAI-CST-001", "montant": 100000.00, "motif": "Situation n°1 - Câblage RDC" }
+{ "montant": 100000.00, "motif": "Situation n°1 - Câblage RDC" }
 ```
 
 > Payment cannot exceed `resteAPayer` → `422`
@@ -534,7 +691,7 @@ axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 // Categories → Articles → Fournisseurs → Chantiers → Employes → SousTraitants
 
 // 3. Create a Caisse for each chantier (REQUIRED before any payment)
-await axios.post('/api/v1/caisses', { code, libelle, chantierId, seuilMinimum });
+await axios.post('/api/v1/caisses', { libelle, chantierId, seuilMinimum });
 
 // 4. Fund the caisse with CREDIT transactions
 await axios.post(`/api/v1/caisses/${id}/transactions`, {
