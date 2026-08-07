@@ -12,7 +12,7 @@ public record ArticleResponse(
         UUID categorieId,
         String categorieLibelle,
         String unite,
-        BigDecimal prixAchatRef,
+        double prixAchatRef,
         BigDecimal tvaRate,
         boolean actif,
         List<String> fournisseursPreferentiels

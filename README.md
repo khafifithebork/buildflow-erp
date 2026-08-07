@@ -161,6 +161,21 @@ Endpoints returning paginated data use `?page=0&size=20&sort=field,asc`:
 }
 ```
 
+### Money and precision
+
+| Kind | Type | Why |
+|------|------|-----|
+| Unit prices — `prix_unitaire`, `prix_achat_ref`, `pu_ht` | `DOUBLE PRECISION` | A rate may need more than two decimals (per kg, per m³, per ml) |
+| Everything else — line totals, HT/TVA/TTC, caisse balances, salaries, contract amounts | `DECIMAL(15,2)` | These are invoiced, paid and reconciled, so they must stay exact |
+
+A unit price feeds a total that is still rounded HALF_UP to two decimals, so the
+extra precision is used in the calculation without leaking sub-centime values
+into the ledger.
+
+> `DOUBLE PRECISION` is binary floating point: `0.1` is stored approximately and
+> repeated sums drift. Do not compare prices for exact equality, and do not
+> extend the type to columns that are summed into a balance.
+
 ### Entity codes
 
 Codes, références and matricules are **assigned by the server** on create.
@@ -434,7 +449,25 @@ Both flags are optional on create and default to `false`.
 The same two fields exist on cash operations (see Trésorerie). When an achat is paid,
 the generated caisse debit inherits the achat's two flags.
 
-Statut Flow: `EN_COURS` → `LIVRE` → `FACTURE` → `PAYE`
+#### Statut flow — strictly sequential, no step may be skipped
+
+`EN_COURS` → `LIVRE` → `FACTURE` → `PAYE`
+
+| Transition | Roles | Data required | Automatic effect |
+|------------|-------|---------------|------------------|
+| `EN_COURS` → `LIVRE` | `ADMIN`, `ACHAT`, `PM` | bon de livraison ref | Provisions the chantier's stock (one `ENTREE` per line, traced on the order ref) |
+| `LIVRE` → `FACTURE` | `ADMIN`, `FINANCE` | facture ref | None |
+| `FACTURE` → `PAYE` | `ADMIN`, `FINANCE` | — | Debits the chantier's caisse by the TTC |
+
+Before settling, the caisse balance must be ≥ the order TTC, otherwise `422`
+`Insufficient funds in caisse '…'. Solde: X, Debit: Y`. Credit the caisse first.
+
+Out-of-order calls return `422`, e.g. `Cannot FACTURE an Achat that is currently
+'EN_COURS'. Expected status: 'LIVRE'`.
+
+All three transitions are driven from the Actions column of the Achats table,
+which offers only the one step valid at the row's current statut and only to
+roles the server would accept.
 
 ---
 
@@ -454,6 +487,27 @@ Statut Flow: `EN_COURS` → `LIVRE` → `FACTURE` → `PAYE`
 ```
 
 > Stock is auto-provisioned when an Achat transitions to LIVRE. No manual creation endpoint.
+
+#### `seuilAlerte` and `enAlerte`
+
+`enAlerte` is computed in `StockMapper`:
+
+```
+enAlerte = quantiteTheorique <= seuilAlerte  AND  seuilAlerte > 0
+```
+
+The `> 0` guard is deliberate: a threshold of `0` means *no threshold set*, not
+*alert on everything*.
+
+> ⚠️ **`seuilAlerte` is never populated.** A `StockArticle` is created with the
+> field at `0` (entity initialiser and column default), and nothing writes to it
+> — there is no field on any request DTO and no update endpoint. The guard above
+> is therefore always false, so **`enAlerte` is always `false`**, the column
+> always reads `0`, and the "Alertes seuil" KPI is always `0`.
+>
+> The formula is correct; what is missing is a way to set the threshold. Making
+> the feature live needs either an editable field per stock line or a default on
+> the catalogue `Article` copied onto each line.
 
 ---
 

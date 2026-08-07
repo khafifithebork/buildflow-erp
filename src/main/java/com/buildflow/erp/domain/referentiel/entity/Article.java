@@ -35,8 +35,9 @@ public class Article extends BaseEntity {
     @Column(nullable = false, length = 20)
     private String unite;
 
-    @Column(name = "prix_achat_ref", nullable = false, precision = 15, scale = 2)
-    private BigDecimal prixAchatRef;
+    // DOUBLE PRECISION: a reference rate may carry more than two decimals.
+    @Column(name = "prix_achat_ref", nullable = false)
+    private double prixAchatRef;
 
     @Column(name = "tva_rate", nullable = false, precision = 5, scale = 2)
     private BigDecimal tvaRate;

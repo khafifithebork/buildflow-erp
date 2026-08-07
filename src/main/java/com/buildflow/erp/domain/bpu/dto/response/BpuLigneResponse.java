@@ -9,7 +9,7 @@ public record BpuLigneResponse(
         String designation,
         String unite,
         BigDecimal qtePrevue,
-        BigDecimal puHt,
+        double puHt,
         BigDecimal budgetPrevuHt,
         BigDecimal montantEngageHt,
         BigDecimal tauxConsommation,

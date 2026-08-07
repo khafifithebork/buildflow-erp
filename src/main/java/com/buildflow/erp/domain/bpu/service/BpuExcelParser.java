@@ -135,7 +135,7 @@ public class BpuExcelParser {
                         designation,
                         unite,
                         numericValue(qteCell, evaluator),
-                        numericValue(puCell, evaluator)));
+                        numericValue(puCell, evaluator).doubleValue()));
             }
         } catch (IOException e) {
             throw new BusinessRuleException(

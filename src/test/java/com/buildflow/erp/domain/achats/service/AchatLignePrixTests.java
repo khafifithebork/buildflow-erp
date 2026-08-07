@@ -51,7 +51,7 @@ class AchatLignePrixTests {
     @Test
     void repricingALineRecomputesTheLineTotalAndTheOrderTotals() {
         // 2 × 100 = 200 HT, +20% TVA = 240 TTC
-        AchatResponse achat = createAchat(new BigDecimal("2"), new BigDecimal("100.00"));
+        AchatResponse achat = createAchat(new BigDecimal("2"), 100.00);
         assertThat(achat.ht()).isEqualByComparingTo("200.00");
         assertThat(achat.ttc()).isEqualByComparingTo("240.00");
 
@@ -59,9 +59,9 @@ class AchatLignePrixTests {
 
         // Re-price to 250 → 2 × 250 = 500 HT, TVA 100, TTC 600
         AchatResponse updated = achatService.updateLignePrix(
-                achat.id(), ligneId, new UpdateLignePrixRequest(new BigDecimal("250.00")));
+                achat.id(), ligneId, new UpdateLignePrixRequest(250.00));
 
-        assertThat(updated.lignes().getFirst().prixUnitaire()).isEqualByComparingTo("250.00");
+        assertThat(updated.lignes().getFirst().prixUnitaire()).isEqualTo(250.00);
         assertThat(updated.lignes().getFirst().total()).isEqualByComparingTo("500.00");
         assertThat(updated.ht()).isEqualByComparingTo("500.00");
         assertThat(updated.tva()).isEqualByComparingTo("100.00");
@@ -70,23 +70,23 @@ class AchatLignePrixTests {
 
     @Test
     void repricingSurvivesAReload() {
-        AchatResponse achat = createAchat(new BigDecimal("3"), new BigDecimal("10.00"));
+        AchatResponse achat = createAchat(new BigDecimal("3"), 10.00);
         UUID ligneId = achat.lignes().getFirst().id();
 
-        achatService.updateLignePrix(achat.id(), ligneId, new UpdateLignePrixRequest(new BigDecimal("11.50")));
+        achatService.updateLignePrix(achat.id(), ligneId, new UpdateLignePrixRequest(11.50));
 
         AchatResponse reloaded = achatService.findById(achat.id());
-        assertThat(reloaded.lignes().getFirst().prixUnitaire()).isEqualByComparingTo("11.50");
+        assertThat(reloaded.lignes().getFirst().prixUnitaire()).isEqualTo(11.50);
         assertThat(reloaded.ht()).isEqualByComparingTo("34.50");
     }
 
     @Test
     void repricingToZeroIsAllowedAndZeroesTheOrder() {
-        AchatResponse achat = createAchat(new BigDecimal("4"), new BigDecimal("25.00"));
+        AchatResponse achat = createAchat(new BigDecimal("4"), 25.00);
         UUID ligneId = achat.lignes().getFirst().id();
 
         AchatResponse updated = achatService.updateLignePrix(
-                achat.id(), ligneId, new UpdateLignePrixRequest(BigDecimal.ZERO));
+                achat.id(), ligneId, new UpdateLignePrixRequest(0.0));
 
         assertThat(updated.ht()).isEqualByComparingTo("0.00");
         assertThat(updated.tva()).isEqualByComparingTo("0.00");
@@ -95,13 +95,13 @@ class AchatLignePrixTests {
 
     @Test
     void aLineFromAnotherOrderIsNotFound() {
-        AchatResponse first = createAchat(new BigDecimal("1"), new BigDecimal("10.00"));
-        AchatResponse second = createAchat(new BigDecimal("1"), new BigDecimal("10.00"));
+        AchatResponse first = createAchat(new BigDecimal("1"), 10.00);
+        AchatResponse second = createAchat(new BigDecimal("1"), 10.00);
 
         UUID foreignLigneId = second.lignes().getFirst().id();
 
         assertThatThrownBy(() -> achatService.updateLignePrix(
-                first.id(), foreignLigneId, new UpdateLignePrixRequest(new BigDecimal("99.00"))))
+                first.id(), foreignLigneId, new UpdateLignePrixRequest(99.00)))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
@@ -123,16 +123,58 @@ class AchatLignePrixTests {
                 .contains("caisse");
     }
 
+    /**
+     * The point of moving prices to DOUBLE PRECISION: a unit price may now carry
+     * more than two decimals, and it survives the round-trip instead of being
+     * truncated to centimes on the way into the database.
+     */
+    @Test
+    void aUnitPriceKeepsMoreThanTwoDecimals() {
+        AchatResponse achat = createAchat(new BigDecimal("1000"), 0.1234);
+
+        assertThat(achat.lignes().getFirst().prixUnitaire()).isEqualTo(0.1234);
+        assertThat(achatService.findById(achat.id()).lignes().getFirst().prixUnitaire())
+                .isEqualTo(0.1234);
+    }
+
+    /**
+     * The extra precision is used in the calculation, but the line total is
+     * still rounded to two decimals — that is the figure that gets invoiced.
+     */
+    @Test
+    void theLineTotalIsStillRoundedToCentimes() {
+        // 3 × 10.005 = 30.015 → 30.02 HALF_UP
+        AchatResponse achat = createAchat(new BigDecimal("3"), 10.005);
+
+        assertThat(achat.lignes().getFirst().total()).isEqualByComparingTo("30.02");
+        assertThat(achat.ht()).isEqualByComparingTo("30.02");
+        assertThat(achat.ttc()).isEqualByComparingTo("36.02");
+    }
+
+    /** Re-pricing accepts sub-centime values too. */
+    @Test
+    void repricingAcceptsMoreThanTwoDecimals() {
+        AchatResponse achat = createAchat(new BigDecimal("200"), 1.00);
+        UUID ligneId = achat.lignes().getFirst().id();
+
+        AchatResponse updated = achatService.updateLignePrix(
+                achat.id(), ligneId, new UpdateLignePrixRequest(0.3333));
+
+        assertThat(updated.lignes().getFirst().prixUnitaire()).isEqualTo(0.3333);
+        // 200 × 0.3333 = 66.66
+        assertThat(updated.ht()).isEqualByComparingTo("66.66");
+    }
+
     /** The ref is server-assigned now, and follows the ACH-<year>-NNN shape. */
     @Test
     void createdOrderGetsAGeneratedRef() {
-        AchatResponse achat = createAchat(new BigDecimal("1"), new BigDecimal("1.00"));
+        AchatResponse achat = createAchat(new BigDecimal("1"), 1.00);
         assertThat(achat.ref()).matches("^ACH-\\d{4}-\\d{3,}$");
     }
 
     // ── Fixtures ──────────────────────────────────────────────────────
 
-    private AchatResponse createAchat(BigDecimal quantite, BigDecimal prixUnitaire) {
+    private AchatResponse createAchat(BigDecimal quantite, double prixUnitaire) {
         String suffix = "IT-" + SEQ.incrementAndGet() + "-" + UUID.randomUUID().toString().substring(0, 8);
 
         UUID chantierId = chantierService.create(new CreateChantierRequest(

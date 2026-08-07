@@ -80,7 +80,7 @@ public class AttachementServiceImpl implements AttachementService {
             }
 
             BigDecimal ligneMontantHt = nouveauCumul.subtract(ancienCumul)
-                    .multiply(bpuLigne.getPuHt())
+                    .multiply(BigDecimal.valueOf(bpuLigne.getPuHt()))
                     .setScale(2, RoundingMode.HALF_UP);
 
             AttachementLigne ligne = new AttachementLigne();

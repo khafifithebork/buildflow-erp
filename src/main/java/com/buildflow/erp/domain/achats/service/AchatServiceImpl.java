@@ -87,7 +87,10 @@ public class AchatServiceImpl implements AchatService {
                 ligne.setBpuLigne(bpuLigne);
             }
 
-            BigDecimal ligneTotal = ligneReq.quantite().multiply(ligneReq.prixUnitaire()).setScale(2, RoundingMode.HALF_UP);
+            // Price is a double now; convert once for the exact total.
+            BigDecimal ligneTotal = ligneReq.quantite()
+                    .multiply(BigDecimal.valueOf(ligneReq.prixUnitaire()))
+                    .setScale(2, RoundingMode.HALF_UP);
             ligne.setTotal(ligneTotal);
 
             totalHt = totalHt.add(ligneTotal);
@@ -209,7 +212,9 @@ public class AchatServiceImpl implements AchatService {
                 .orElseThrow(() -> new ResourceNotFoundException("LigneAchat", ligneId));
 
         ligne.setPrixUnitaire(request.prixUnitaire());
-        ligne.setTotal(ligne.getQuantite().multiply(request.prixUnitaire()).setScale(2, RoundingMode.HALF_UP));
+        ligne.setTotal(ligne.getQuantite()
+                .multiply(BigDecimal.valueOf(request.prixUnitaire()))
+                .setScale(2, RoundingMode.HALF_UP));
 
         recomputeTotals(achat);
 

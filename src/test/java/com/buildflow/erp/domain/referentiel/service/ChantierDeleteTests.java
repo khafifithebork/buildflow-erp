@@ -202,7 +202,7 @@ class ChantierDeleteTests {
         article.setDesignation("Article de test");
         article.setCategorie(categorie);
         article.setUnite("U");
-        article.setPrixAchatRef(new BigDecimal("100.00"));
+        article.setPrixAchatRef(100.00);
         article.setTvaRate(new BigDecimal("20.00"));
         article = articleRepository.save(article);
 
@@ -212,7 +212,7 @@ class ChantierDeleteTests {
                 LocalDate.now(),
                 LocalDate.now().plusDays(7),
                 List.of(new CreateLigneAchatRequest(
-                        article.getId(), new BigDecimal("2"), new BigDecimal("100.00"), null)),
+                        article.getId(), new BigDecimal("2"), 100.00, null)),
                 analytique,
                 fiscal));
     }

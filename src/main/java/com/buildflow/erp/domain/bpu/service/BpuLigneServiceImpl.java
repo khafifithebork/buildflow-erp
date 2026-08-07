@@ -126,7 +126,7 @@ public class BpuLigneServiceImpl implements BpuLigneService {
         ligne.setQtePrevue(request.qtePrevue());
         ligne.setPuHt(request.puHt());
         ligne.setBudgetPrevuHt(
-                request.qtePrevue().multiply(request.puHt()).setScale(2, RoundingMode.HALF_UP));
+                request.qtePrevue().multiply(BigDecimal.valueOf(request.puHt())).setScale(2, RoundingMode.HALF_UP));
     }
 
     private BpuLigneResponse withConsommation(BpuLigne ligne) {
