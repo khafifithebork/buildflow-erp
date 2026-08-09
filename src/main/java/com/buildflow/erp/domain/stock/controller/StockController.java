@@ -31,6 +31,14 @@ public class StockController {
         return ResponseEntity.ok(ApiResponse.success(stockService.getStockByChantier(chantierId, pageable)));
     }
 
+    /** Stock held in the central dépôt, i.e. not yet allocated to any chantier. */
+    @GetMapping("/depot")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MAGASINIER', 'PM', 'CHEF_CHANTIER')")
+    public ResponseEntity<ApiResponse<PageResponse<StockArticleResponse>>> getStockDepot(
+            @PageableDefault(size = 20, sort = "article.designation") Pageable pageable) {
+        return ResponseEntity.ok(ApiResponse.success(stockService.getStockDepot(pageable)));
+    }
+
     @PostMapping("/mouvements")
     @PreAuthorize("hasAnyRole('ADMIN', 'MAGASINIER', 'PM')")
     public ResponseEntity<ApiResponse<StockArticleResponse>> createMouvement(

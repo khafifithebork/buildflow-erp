@@ -488,6 +488,35 @@ roles the server would accept.
 
 > Stock is auto-provisioned when an Achat transitions to LIVRE. No manual creation endpoint.
 
+#### Emplacement — Dépôt central vs En Travaux
+
+Stock has a location, expressed by `chantier_id` itself:
+
+| `chantier_id` | `emplacement` | Meaning |
+|---------------|---------------|---------|
+| `NULL` | `DEPOT` | Held in the central dépôt, not yet allocated |
+| set | `CHANTIER` | Allocated to that site — "en travaux" |
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/depot` | Stock held in the central dépôt |
+| `GET` | `/chantiers/{chantierId}` | Stock allocated to one chantier |
+
+A movement with no `chantierId` targets the dépôt, so an `ENTREE` without one
+receives goods into the warehouse. `TRANSFERT` — previously rejected as
+unsupported — now moves quantity between two locations using
+`chantierDestinationId` (null for the dépôt), in either direction, and is
+recorded as two movement lines sharing a reference.
+
+The dashboard's `valeurStocksDepotHt` and `valeurStocksEnTravauxHt` partition
+`valeurStocksGlobaleHt` by this location and always sum back to it. Before this,
+both figures were hardcoded to `0` on the dashboard card because nothing in the
+model could tell the two apart.
+
+> Purchases still land directly on the ordering chantier: an Achat is placed for
+> a site, so `validate-bl` provisions that site, not the dépôt. Use a manual
+> `ENTREE` with no chantier to receive a bulk purchase into the warehouse.
+
 #### `seuilAlerte` and `enAlerte`
 
 `enAlerte` is computed in `StockMapper`:

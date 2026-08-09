@@ -8,8 +8,12 @@ public record StockArticleResponse(
         String articleCode,
         String designation,
         String unite,
+        /** Null when the line sits in the central dépôt. */
         UUID chantierId,
+        /** "Dépôt central" when there is no chantier. */
         String chantierNom,
+        /** DEPOT or CHANTIER — where this quantity is held. */
+        String emplacement,
         BigDecimal quantiteTheorique,
         BigDecimal seuilAlerte,
         boolean enAlerte
