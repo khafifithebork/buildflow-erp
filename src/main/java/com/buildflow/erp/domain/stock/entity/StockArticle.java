@@ -20,9 +20,18 @@ public class StockArticle extends BaseEntity {
     @JoinColumn(name = "article_id", nullable = false)
     private Article article;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "chantier_id", nullable = false)
+    /**
+     * Where this stock sits. Null means the central dépôt; a chantier means the
+     * quantity is allocated to that site ("en travaux").
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "chantier_id")
     private Chantier chantier;
+
+    /** True when this line is held in the central dépôt rather than on a site. */
+    public boolean estAuDepot() {
+        return chantier == null;
+    }
 
     @Column(name = "quantite_theorique", nullable = false, precision = 15, scale = 3)
     private BigDecimal quantiteTheorique = BigDecimal.ZERO;

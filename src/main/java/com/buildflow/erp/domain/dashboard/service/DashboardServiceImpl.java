@@ -54,6 +54,12 @@ public class DashboardServiceImpl implements DashboardService {
         // pin it to two decimals here, where it becomes a money figure.
         BigDecimal valeurStocksGlobaleHt = round(
                 BigDecimal.valueOf(stockArticleRepository.sumValeurStockHt()));
+        // Same valuation split by location, so the dashboard's Dépôts /
+        // En Travaux figures are computed rather than hardcoded to zero.
+        BigDecimal valeurStocksDepotHt = round(
+                BigDecimal.valueOf(stockArticleRepository.sumValeurStockDepotHt()));
+        BigDecimal valeurStocksEnTravauxHt = round(
+                BigDecimal.valueOf(stockArticleRepository.sumValeurStockEnTravauxHt()));
 
         // ── Flow KPIs (scoped to `month`, or all-time when absent) ───
         BigDecimal decaissementsCaisseTtc = round(caisseTransactionRepository.sumDebitsBetween(dtStart, dtEnd));
@@ -90,6 +96,8 @@ public class DashboardServiceImpl implements DashboardService {
                 paieAPayerNet,
                 attachementsEnCoursTtc,
                 valeurStocksGlobaleHt,
+                valeurStocksDepotHt,
+                valeurStocksEnTravauxHt,
                 decaissementsCaisseTtc,
                 encaissementsGlobauxTtc,
                 decaissementsGlobauxTtc,

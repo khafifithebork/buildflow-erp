@@ -14,6 +14,28 @@ public interface StockArticleRepository extends JpaRepository<StockArticle, UUID
     Page<StockArticle> findByChantierId(UUID chantierId, Pageable pageable);
     long countByChantierId(UUID chantierId);
 
+    /** The central dépôt line for an article — the one with no chantier. */
+    Optional<StockArticle> findByArticleIdAndChantierIsNull(UUID articleId);
+
+    /** Everything sitting in the central dépôt. */
+    Page<StockArticle> findByChantierIsNull(Pageable pageable);
+
+    // ── Dépôts vs En Travaux, for the dashboard split ────────────────────
+    // Same valuation as sumValeurStockHt, partitioned by location. Both return
+    // Double because prixAchatRef is DOUBLE PRECISION.
+
+    @Query("""
+            SELECT COALESCE(SUM(s.quantiteTheorique * s.article.prixAchatRef), 0) FROM StockArticle s
+            WHERE s.chantier IS NULL
+            """)
+    Double sumValeurStockDepotHt();
+
+    @Query("""
+            SELECT COALESCE(SUM(s.quantiteTheorique * s.article.prixAchatRef), 0) FROM StockArticle s
+            WHERE s.chantier IS NOT NULL
+            """)
+    Double sumValeurStockEnTravauxHt();
+
     // No Dépôts/En Travaux split yet — StockArticle isn't scoped beyond a
     // single chantier quantity (see doc gap 2.7), so this is one global total.
     //

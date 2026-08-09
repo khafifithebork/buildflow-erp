@@ -11,6 +11,10 @@ public record DashboardKpisResponse(
         BigDecimal paieAPayerNet,
         BigDecimal attachementsEnCoursTtc,
         BigDecimal valeurStocksGlobaleHt,
+        /** Split of the line above: stock still in the central dépôt. */
+        BigDecimal valeurStocksDepotHt,
+        /** Split of the line above: stock allocated to chantiers. */
+        BigDecimal valeurStocksEnTravauxHt,
 
         // Flow KPIs — scoped to `month` when provided, all-time otherwise.
         BigDecimal decaissementsCaisseTtc,

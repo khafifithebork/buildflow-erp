@@ -10,5 +10,8 @@ import java.util.UUID;
 public interface StockService {
     void approvisionnerDepuisAchat(Achat achat);
     PageResponse<StockArticleResponse> getStockByChantier(UUID chantierId, Pageable pageable);
+
+    /** Everything held in the central dépôt (stock with no chantier). */
+    PageResponse<StockArticleResponse> getStockDepot(Pageable pageable);
     StockArticleResponse createMouvement(CreateMouvementStockRequest request);
 }

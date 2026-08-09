@@ -23,6 +23,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
@@ -77,49 +78,129 @@ public class StockServiceImpl implements StockService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public PageResponse<StockArticleResponse> getStockDepot(Pageable pageable) {
+        return PageResponse.from(
+                stockArticleRepository.findByChantierIsNull(pageable)
+                        .map(stockMapper::toResponse)
+        );
+    }
+
+    @Override
     @Transactional
     public StockArticleResponse createMouvement(CreateMouvementStockRequest request) {
         Article article = articleRepository.findById(request.articleId())
                 .orElseThrow(() -> new ResourceNotFoundException("Article", request.articleId()));
-        Chantier chantier = chantierRepository.findById(request.chantierId())
-                .orElseThrow(() -> new ResourceNotFoundException("Chantier", request.chantierId()));
+
+        // Null chantier = the central dépôt, on both sides of a movement.
+        Chantier source = resolveChantier(request.chantierId());
 
         if (request.typeMouvement() == TypeMouvement.TRANSFERT) {
-            throw new BusinessRuleException(
-                    "TRANSFERT n'est pas supporté par ce mouvement manuel (nécessite un chantier destination)");
+            return transferer(article, source, request);
         }
 
-        StockArticle stock = stockArticleRepository
-                .findByArticleIdAndChantierId(article.getId(), chantier.getId())
-                .orElseGet(() -> {
-                    StockArticle newStock = new StockArticle();
-                    newStock.setArticle(article);
-                    newStock.setChantier(chantier);
-                    return newStock;
-                });
+        StockArticle stock = findOrCreateStock(article, source);
 
         switch (request.typeMouvement()) {
             case ENTREE, AJUSTEMENT -> stock.setQuantiteTheorique(stock.getQuantiteTheorique().add(request.quantite()));
-            case SORTIE -> {
-                if (stock.getQuantiteTheorique().compareTo(request.quantite()) < 0) {
-                    throw new BusinessRuleException(
-                            "Quantité insuffisante en stock (disponible: " + stock.getQuantiteTheorique() + ")");
-                }
-                stock.setQuantiteTheorique(stock.getQuantiteTheorique().subtract(request.quantite()));
-            }
-            case TRANSFERT -> throw new BusinessRuleException("unreachable");
+            case SORTIE -> retirer(stock, request.quantite());
+            case TRANSFERT -> throw new IllegalStateException("handled above");
         }
 
         StockArticle savedStock = stockArticleRepository.save(stock);
-
-        MouvementStock mouvement = new MouvementStock();
-        mouvement.setStockArticle(savedStock);
-        mouvement.setTypeMouvement(request.typeMouvement());
-        mouvement.setQuantite(request.quantite());
-        mouvement.setDocumentRef(request.documentRef());
-        mouvementStockRepository.save(mouvement);
+        enregistrerMouvement(savedStock, request.typeMouvement(), request.quantite(), request.documentRef());
 
         return stockMapper.toResponse(savedStock);
+    }
+
+    /**
+     * Moves quantity between two locations — dépôt to chantier, chantier to
+     * dépôt, or between two chantiers. Previously rejected outright, which is
+     * why nothing could ever sit in a warehouse.
+     *
+     * <p>Recorded as two TRANSFERT lines sharing a reference, one on each side,
+     * because a MouvementStock belongs to exactly one stock line. The response
+     * describes the destination, since that is where the stock ended up.
+     */
+    private StockArticleResponse transferer(Article article, Chantier source, CreateMouvementStockRequest request) {
+        Chantier destination = resolveChantier(request.chantierDestinationId());
+
+        if (java.util.Objects.equals(
+                source == null ? null : source.getId(),
+                destination == null ? null : destination.getId())) {
+            throw new BusinessRuleException(
+                    "La source et la destination du transfert sont identiques ("
+                            + emplacementLabel(source) + ").");
+        }
+
+        StockArticle from = stockArticleRepository
+                .findByArticleIdAndChantierId(article.getId(), source == null ? null : source.getId())
+                .or(() -> source == null
+                        ? stockArticleRepository.findByArticleIdAndChantierIsNull(article.getId())
+                        : java.util.Optional.empty())
+                .orElseThrow(() -> new BusinessRuleException(
+                        "Aucun stock de '" + article.getDesignation() + "' à " + emplacementLabel(source) + "."));
+
+        retirer(from, request.quantite());
+        StockArticle savedFrom = stockArticleRepository.save(from);
+
+        StockArticle to = findOrCreateStock(article, destination);
+        to.setQuantiteTheorique(to.getQuantiteTheorique().add(request.quantite()));
+        StockArticle savedTo = stockArticleRepository.save(to);
+
+        String ref = request.documentRef() != null && !request.documentRef().isBlank()
+                ? request.documentRef()
+                : "TRF-" + emplacementLabel(source) + " → " + emplacementLabel(destination);
+
+        enregistrerMouvement(savedFrom, TypeMouvement.TRANSFERT, request.quantite(), ref);
+        enregistrerMouvement(savedTo, TypeMouvement.TRANSFERT, request.quantite(), ref);
+
+        log.info("Transfert de {} {} : {} -> {}", request.quantite(), article.getDesignation(),
+                emplacementLabel(source), emplacementLabel(destination));
+
+        return stockMapper.toResponse(savedTo);
+    }
+
+    private Chantier resolveChantier(UUID chantierId) {
+        if (chantierId == null) {
+            return null; // central dépôt
+        }
+        return chantierRepository.findById(chantierId)
+                .orElseThrow(() -> new ResourceNotFoundException("Chantier", chantierId));
+    }
+
+    private StockArticle findOrCreateStock(Article article, Chantier chantier) {
+        java.util.Optional<StockArticle> existing = chantier == null
+                ? stockArticleRepository.findByArticleIdAndChantierIsNull(article.getId())
+                : stockArticleRepository.findByArticleIdAndChantierId(article.getId(), chantier.getId());
+
+        return existing.orElseGet(() -> {
+            StockArticle created = new StockArticle();
+            created.setArticle(article);
+            created.setChantier(chantier);
+            return created;
+        });
+    }
+
+    private static void retirer(StockArticle stock, BigDecimal quantite) {
+        if (stock.getQuantiteTheorique().compareTo(quantite) < 0) {
+            throw new BusinessRuleException(
+                    "Quantité insuffisante en stock (disponible: " + stock.getQuantiteTheorique() + ")");
+        }
+        stock.setQuantiteTheorique(stock.getQuantiteTheorique().subtract(quantite));
+    }
+
+    private void enregistrerMouvement(StockArticle stock, TypeMouvement type, BigDecimal quantite, String documentRef) {
+        MouvementStock mouvement = new MouvementStock();
+        mouvement.setStockArticle(stock);
+        mouvement.setTypeMouvement(type);
+        mouvement.setQuantite(quantite);
+        mouvement.setDocumentRef(documentRef);
+        mouvementStockRepository.save(mouvement);
+    }
+
+    private static String emplacementLabel(Chantier chantier) {
+        return chantier == null ? "Dépôt central" : chantier.getNom();
     }
 
     @Transactional(readOnly = true)
