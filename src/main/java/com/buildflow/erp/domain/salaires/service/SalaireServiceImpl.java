@@ -16,7 +16,9 @@ import com.buildflow.erp.domain.salaires.dto.request.PayerFichePaieRequest;
 import com.buildflow.erp.domain.salaires.dto.response.FichePaieResponse;
 import com.buildflow.erp.domain.salaires.entity.FichePaie;
 import com.buildflow.erp.domain.salaires.entity.FichePaieStatut;
-import com.buildflow.erp.domain.salaires.entity.ModePaiement;
+import com.buildflow.erp.common.paiement.ModePaiement;
+import com.buildflow.erp.common.paiement.ModePaiementAudit;
+import com.buildflow.erp.common.paiement.TypeDocumentPaiement;
 import com.buildflow.erp.domain.salaires.mapper.FichePaieMapper;
 import com.buildflow.erp.domain.salaires.repository.FichePaieRepository;
 import com.buildflow.erp.domain.tresorerie.service.TresorerieService;
@@ -41,6 +43,7 @@ public class SalaireServiceImpl implements SalaireService {
     private final FichePaieMapper fichePaieMapper;
     private final TresorerieService tresorerieService;
     private final CodeGenerator codeGenerator;
+    private final ModePaiementAudit modePaiementAudit;
 
     @Override
     @Transactional
@@ -127,8 +130,12 @@ public class SalaireServiceImpl implements SalaireService {
         FichePaie fiche = findEntity(id);
         assertStatut(fiche, FichePaieStatut.VALIDEE, "PAYER");
 
+        ModePaiement ancien = fiche.getModePaiement();
+
         fiche.setStatut(FichePaieStatut.PAYEE);
         fiche.setModePaiement(request.modePaiement());
+        modePaiementAudit.record(TypeDocumentPaiement.FICHE_PAIE, fiche.getId(),
+                fiche.getReference(), ancien, request.modePaiement());
 
         // CROSS-DOMAIN SIDE EFFECT: only debit the chantier's caisse when this
         // salary is actually paid out of it — a VIREMENT is a bank transfer and

@@ -1,6 +1,7 @@
 package com.buildflow.erp.domain.achats.entity;
 
 import com.buildflow.erp.common.entity.BaseEntity;
+import com.buildflow.erp.common.paiement.ModePaiement;
 import com.buildflow.erp.domain.referentiel.entity.Chantier;
 import com.buildflow.erp.domain.referentiel.entity.Fournisseur;
 import jakarta.persistence.*;
@@ -54,6 +55,11 @@ public class Achat extends BaseEntity {
 
     @Column(name = "facture_ref", length = 50)
     private String factureRef;
+
+    /** How this order was settled. Null until it reaches PAYE. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mode_paiement", length = 20)
+    private ModePaiement modePaiement;
 
     /** "L'achat a-t-il réellement servi au chantier ?" — analytic (site cost) impact. */
     @Column(name = "impact_analytique_chantier", nullable = false)

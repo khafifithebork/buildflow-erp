@@ -98,3 +98,6 @@ databaseChangeLog:
   - include:
       file: db/changelog/changes/033-widen-price-precision.sql
       relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/034-add-mode-paiement-and-history.sql
+      relativeToChangelogFile: false

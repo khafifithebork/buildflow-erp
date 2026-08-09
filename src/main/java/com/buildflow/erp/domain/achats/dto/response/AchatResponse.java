@@ -1,5 +1,6 @@
 package com.buildflow.erp.domain.achats.dto.response;
 
+import com.buildflow.erp.common.paiement.ModePaiement;
 import com.buildflow.erp.domain.achats.entity.AchatStatut;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -20,6 +21,8 @@ public record AchatResponse(
         List<LigneAchatResponse> lignes,
         String bonLivraisonRef,
         String factureRef,
+        /** How the order was settled; null until it reaches PAYE. */
+        ModePaiement modePaiement,
         /** "L'achat a-t-il réellement servi au chantier ?" */
         boolean impactAnalytiqueChantier,
         /** "Y a-t-il une facture officielle à déclarer ?" */

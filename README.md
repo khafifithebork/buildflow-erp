@@ -609,6 +609,69 @@ PaiementStatut: `EN_ATTENTE` → `VALIDE` → `PAYE`
 
 ---
 
+### 5.13 Mode de paiement — `/api/v1/mode-paiement`
+
+Every payable document — a commande (`Achat`), a fiche de paie and a paiement
+sous-traitant — records **how** it was settled:
+
+| Value | Meaning | Debits the chantier's caisse? |
+|-------|---------|-------------------------------|
+| `VIREMENT` | Bank transfer | No |
+| `CHEQUE` | Cheque | No |
+| `EFFET` | Bill of exchange / lettre de change | No |
+| `CAISSE` | Cash, out of the chantier's caisse | **Yes** |
+
+`CAISSE` is no longer a default — the mode is null until the document is paid,
+and the payer chooses one explicitly in a popup. It stays selectable so cash
+payouts remain possible, and records paid before this feature are backfilled to
+`CAISSE`, which is exactly what happened to them.
+
+**Setting the mode** happens on each module's own payment endpoint:
+
+| Endpoint | Mode passed as |
+|----------|----------------|
+| `PATCH /achats/{id}/validate-paiement` | `?modePaiement=` |
+| `PATCH /salaires/{id}/payer` | body `{ "modePaiement": … }` |
+| `PATCH /contrats-sous-traitant/paiements/{id}/payer` | `?modePaiement=` |
+
+> Only `CAISSE` runs the caisse debit, so the §8.2 prerequisite about the caisse
+> balance — and its `422 Insufficient funds` — now applies to cash settlement
+> only. A virement, cheque or effet settles regardless of the caisse balance.
+
+**Correcting the mode afterwards**, for all three document types:
+
+| Method | Endpoint | Roles |
+|--------|----------|-------|
+| `PATCH` | `/{typeDocument}/{documentId}` | `ADMIN`, `FINANCE` |
+| `GET` | `/{typeDocument}/{documentId}/historique` | `ADMIN`, `FINANCE`, `DIRECTEUR` |
+
+`typeDocument` is `ACHAT`, `FICHE_PAIE` or `PAIEMENT_SOUS_TRAITANT`. Only a
+settled document can be corrected; anything else returns `422`.
+
+> **The caisse is never adjusted by a correction.** Switching a paid document off
+> `CAISSE` does not credit the cash back, and switching onto it does not debit —
+> that would move real money on the back of what is meant to be a relabelling.
+> The response carries an `avertissement` in both directions so a corrective
+> entry can be made deliberately.
+
+#### Audit trail
+
+Every assignment and change appends one immutable row to
+`mode_paiement_historique` (old mode, new mode, who, when), including the first
+assignment at payment time, where the old mode is null. Re-selecting the same
+mode is not a change and appends nothing.
+
+```json
+[
+  { "ancienMode": "VIREMENT", "nouveauMode": "CHEQUE",
+    "modifiePar": "finance@buildflow.ma", "dateModification": "2026-08-09T14:52:52" },
+  { "ancienMode": null, "nouveauMode": "VIREMENT",
+    "modifiePar": "finance@buildflow.ma", "dateModification": "2026-08-09T14:52:19" }
+]
+```
+
+---
+
 ## 6. Authentication & Authorization
 
 ### How It Works

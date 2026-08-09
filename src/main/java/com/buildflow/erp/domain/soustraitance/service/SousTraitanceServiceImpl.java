@@ -1,6 +1,9 @@
 package com.buildflow.erp.domain.soustraitance.service;
 
 import com.buildflow.erp.common.code.CodeGenerator;
+import com.buildflow.erp.common.paiement.ModePaiement;
+import com.buildflow.erp.common.paiement.ModePaiementAudit;
+import com.buildflow.erp.common.paiement.TypeDocumentPaiement;
 import com.buildflow.erp.common.code.CodeSequence;
 import com.buildflow.erp.common.exception.BusinessRuleException;
 import com.buildflow.erp.common.exception.ConflictException;
@@ -51,6 +54,7 @@ public class SousTraitanceServiceImpl implements SousTraitanceService {
     private final SousTraitanceMapper mapper;
     private final TresorerieService tresorerieService;
     private final CodeGenerator codeGenerator;
+    private final ModePaiementAudit modePaiementAudit;
 
     private static final BigDecimal TVA_RATE = new BigDecimal("0.20");
 
@@ -220,7 +224,7 @@ public class SousTraitanceServiceImpl implements SousTraitanceService {
 
     @Override
     @Transactional
-    public PaiementSousTraitantResponse payerPaiement(UUID paiementId) {
+    public PaiementSousTraitantResponse payerPaiement(UUID paiementId, ModePaiement modePaiement) {
         PaiementSousTraitant paiement = findPaiementEntity(paiementId);
         assertPaiementStatut(paiement, PaiementStatut.VALIDE, "PAYER");
 
@@ -244,15 +248,22 @@ public class SousTraitanceServiceImpl implements SousTraitanceService {
         st.setMontantTotalPaye(st.getMontantTotalPaye().add(paiement.getMontant()));
         sousTraitantRepository.save(st);
 
-        // CROSS-DOMAIN SIDE EFFECT: Debit the chantier's caisse
-        tresorerieService.debiterPourAchat(
-                contrat.getChantier().getId(),
-                paiement.getMontant(),
-                "ST-" + paiement.getReference(),
-                // Subcontractor payments carry no purchase-level indicators yet;
-                // finance ticks them from the Caisse view if applicable.
-                false,
-                false);
+        paiement.setModePaiement(modePaiement);
+        modePaiementAudit.record(TypeDocumentPaiement.PAIEMENT_SOUS_TRAITANT, paiement.getId(),
+                paiement.getReference(), null, modePaiement);
+
+        // CROSS-DOMAIN SIDE EFFECT: only cash settles out of the caisse. A
+        // virement, cheque or effet clears through the bank.
+        if (modePaiement == ModePaiement.CAISSE) {
+            tresorerieService.debiterPourAchat(
+                    contrat.getChantier().getId(),
+                    paiement.getMontant(),
+                    "ST-" + paiement.getReference(),
+                    // Subcontractor payments carry no purchase-level indicators yet;
+                    // finance ticks them from the Caisse view if applicable.
+                    false,
+                    false);
+        }
 
         log.info("Paiement {} paid: {} MAD for contrat {} (sous-traitant: {})",
                 paiement.getReference(), paiement.getMontant(),

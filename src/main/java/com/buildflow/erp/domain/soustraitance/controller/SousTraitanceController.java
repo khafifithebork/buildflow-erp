@@ -1,6 +1,7 @@
 package com.buildflow.erp.domain.soustraitance.controller;
 
 import com.buildflow.erp.common.dto.ApiResponse;
+import com.buildflow.erp.common.paiement.ModePaiement;
 import com.buildflow.erp.domain.soustraitance.dto.request.AvanceRequest;
 import com.buildflow.erp.domain.soustraitance.dto.request.CreateContratRequest;
 import com.buildflow.erp.domain.soustraitance.dto.request.CreatePaiementRequest;
@@ -107,7 +108,9 @@ public class SousTraitanceController {
     @PatchMapping("/paiements/{paiementId}/payer")
     @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE')")
     public ResponseEntity<ApiResponse<PaiementSousTraitantResponse>> payerPaiement(
-            @PathVariable UUID paiementId) {
-        return ResponseEntity.ok(ApiResponse.success(sousTraitanceService.payerPaiement(paiementId)));
+            @PathVariable UUID paiementId,
+            @RequestParam(defaultValue = "CAISSE") ModePaiement modePaiement) {
+        return ResponseEntity.ok(ApiResponse.success(
+                sousTraitanceService.payerPaiement(paiementId, modePaiement)));
     }
 }
