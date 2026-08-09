@@ -81,9 +81,26 @@ public class DashboardServiceImpl implements DashboardService {
                 .add(stPayeesTtc)
                 .add(salairesPayeesNet);
 
+        // Same outflows with the tax stripped out. Only achats carry a
+        // separable TVA — caisse debits, sous-traitance payments and net
+        // salaries are recorded as single amounts with no tax breakdown — so
+        // the achats component swaps to HT and the rest passes through
+        // unchanged. That is the whole of the "hors fiscalité" adjustment, and
+        // the difference between the two figures is the recoverable TVA on
+        // settled purchases.
+        BigDecimal achatsPayeesHt = round(achatRepository.sumHtPayeesBetween(dateStart, dateEnd));
+        BigDecimal decaissementsGlobauxHt = decaissementsCaisseTtc
+                .add(achatsPayeesHt)
+                .add(stPayeesTtc)
+                .add(salairesPayeesNet);
+
         // ── Margin formulas ───────────────────────────────────────────
         BigDecimal margeNetteComptableHt = round(
                 encaissementsGlobauxHt.subtract(decaissementsGlobauxTtc).add(valeurStocksGlobaleHt));
+
+        // The same margin read entirely on HT: no TVA on either side.
+        BigDecimal resultatHorsFiscaliteHt = round(
+                encaissementsGlobauxHt.subtract(decaissementsGlobauxHt).add(valeurStocksGlobaleHt));
 
         BigDecimal margeEnCoursPrevisionnelleHt = round(
                 attachementsEnCoursHt.subtract(
@@ -101,7 +118,9 @@ public class DashboardServiceImpl implements DashboardService {
                 decaissementsCaisseTtc,
                 encaissementsGlobauxTtc,
                 decaissementsGlobauxTtc,
+                decaissementsGlobauxHt,
                 margeNetteComptableHt,
+                resultatHorsFiscaliteHt,
                 margeEnCoursPrevisionnelleHt);
     }
 

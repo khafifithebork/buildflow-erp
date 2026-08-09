@@ -20,8 +20,12 @@ public record DashboardKpisResponse(
         BigDecimal decaissementsCaisseTtc,
         BigDecimal encaissementsGlobauxTtc,
         BigDecimal decaissementsGlobauxTtc,
+        /** Same outflows net of the recoverable TVA on settled purchases. */
+        BigDecimal decaissementsGlobauxHt,
 
         // Margin formulas.
         BigDecimal margeNetteComptableHt,
+        /** The margin read entirely on HT — no TVA on either side. */
+        BigDecimal resultatHorsFiscaliteHt,
         BigDecimal margeEnCoursPrevisionnelleHt
 ) {}
