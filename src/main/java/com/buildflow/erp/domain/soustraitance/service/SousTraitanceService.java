@@ -1,5 +1,6 @@
 package com.buildflow.erp.domain.soustraitance.service;
 
+import com.buildflow.erp.common.paiement.ModePaiement;
 import com.buildflow.erp.domain.soustraitance.dto.request.AvanceRequest;
 import com.buildflow.erp.domain.soustraitance.dto.request.CreateContratRequest;
 import com.buildflow.erp.domain.soustraitance.dto.request.CreatePaiementRequest;
@@ -42,5 +43,5 @@ public interface SousTraitanceService {
     PaiementSousTraitantResponse validerPaiement(UUID paiementId);
 
     /** Pay: VALIDE → PAYE (triggers caisse debit + updates contract/sous-traitant totals) */
-    PaiementSousTraitantResponse payerPaiement(UUID paiementId);
+    PaiementSousTraitantResponse payerPaiement(UUID paiementId, ModePaiement modePaiement);
 }

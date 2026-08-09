@@ -1,6 +1,7 @@
 package com.buildflow.erp.domain.soustraitance.entity;
 
 import com.buildflow.erp.common.entity.BaseEntity;
+import com.buildflow.erp.common.paiement.ModePaiement;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -35,4 +36,9 @@ public class PaiementSousTraitant extends BaseEntity {
 
     @Column(name = "date_paiement")
     private LocalDate datePaiement;
+
+    /** How this payment was settled. Null until it reaches PAYE. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mode_paiement", length = 20)
+    private ModePaiement modePaiement;
 }

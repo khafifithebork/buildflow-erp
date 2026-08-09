@@ -4,6 +4,7 @@ import com.buildflow.erp.common.entity.BaseEntity;
 import com.buildflow.erp.domain.bpu.entity.BpuLigne;
 import com.buildflow.erp.domain.referentiel.entity.Chantier;
 import com.buildflow.erp.domain.referentiel.entity.Employe;
+import com.buildflow.erp.common.paiement.ModePaiement;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -71,9 +72,11 @@ public class FichePaie extends BaseEntity {
     @Column(nullable = false, length = 20)
     private FichePaieStatut statut = FichePaieStatut.BROUILLON;
 
+    // Null until the payslip is actually paid: CAISSE is no longer an
+    // implicit default, the payer chooses a mode explicitly.
     @Enumerated(EnumType.STRING)
-    @Column(name = "mode_paiement", nullable = false, length = 20)
-    private ModePaiement modePaiement = ModePaiement.CAISSE;
+    @Column(name = "mode_paiement", length = 20)
+    private ModePaiement modePaiement;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "bpu_ligne_id")

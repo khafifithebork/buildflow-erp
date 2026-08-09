@@ -1,7 +1,7 @@
 package com.buildflow.erp.domain.salaires.dto.response;
 
 import com.buildflow.erp.domain.salaires.entity.FichePaieStatut;
-import com.buildflow.erp.domain.salaires.entity.ModePaiement;
+import com.buildflow.erp.common.paiement.ModePaiement;
 
 import java.math.BigDecimal;
 import java.util.UUID;

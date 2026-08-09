@@ -1,6 +1,9 @@
 package com.buildflow.erp.domain.achats.service;
 
 import com.buildflow.erp.common.code.CodeGenerator;
+import com.buildflow.erp.common.paiement.ModePaiement;
+import com.buildflow.erp.common.paiement.ModePaiementAudit;
+import com.buildflow.erp.common.paiement.TypeDocumentPaiement;
 import com.buildflow.erp.common.code.CodeSequence;
 import com.buildflow.erp.common.dto.UpdateIndicateursRequest;
 import com.buildflow.erp.common.exception.BusinessRuleException;
@@ -46,6 +49,7 @@ public class AchatServiceImpl implements AchatService {
     private final CodeGenerator codeGenerator;
     private final StockService stockService;
     private final TresorerieService tresorerieService;
+    private final ModePaiementAudit modePaiementAudit;
 
     private static final BigDecimal TVA_RATE = new BigDecimal("0.20"); // 20% Moroccan TVA
 
@@ -155,16 +159,23 @@ public class AchatServiceImpl implements AchatService {
 
     @Override
     @Transactional
-    public AchatResponse validatePaiement(UUID id) {
+    public AchatResponse validatePaiement(UUID id, ModePaiement modePaiement) {
         Achat achat = findEntityById(id);
         assertStatus(achat, AchatStatut.FACTURE, "PAYE");
 
         achat.setStatut(AchatStatut.PAYE);
+        achat.setModePaiement(modePaiement);
+        modePaiementAudit.record(TypeDocumentPaiement.ACHAT, achat.getId(),
+                achat.getRef(), null, modePaiement);
 
-        // CROSS-DOMAIN SIDE EFFECT: Debit the chantier's caisse
-        tresorerieService.debiterPourAchat(
-                achat.getChantier().getId(), achat.getTtc(), achat.getRef(),
-                achat.isImpactAnalytiqueChantier(), achat.isImpactComptableFiscal());
+        // CROSS-DOMAIN SIDE EFFECT: only cash settles out of the caisse. A
+        // virement, cheque or effet clears through the bank and must leave the
+        // chantier's cash balance untouched.
+        if (modePaiement == ModePaiement.CAISSE) {
+            tresorerieService.debiterPourAchat(
+                    achat.getChantier().getId(), achat.getTtc(), achat.getRef(),
+                    achat.isImpactAnalytiqueChantier(), achat.isImpactComptableFiscal());
+        }
 
         return achatMapper.toResponse(achatRepository.save(achat));
     }

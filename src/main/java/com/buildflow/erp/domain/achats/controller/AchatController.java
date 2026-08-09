@@ -2,6 +2,7 @@ package com.buildflow.erp.domain.achats.controller;
 
 import com.buildflow.erp.common.dto.ApiResponse;
 import com.buildflow.erp.common.dto.UpdateIndicateursRequest;
+import com.buildflow.erp.common.paiement.ModePaiement;
 import com.buildflow.erp.domain.achats.dto.request.CreateAchatRequest;
 import com.buildflow.erp.domain.achats.dto.response.AchatResponse;
 import com.buildflow.erp.domain.achats.dto.request.UpdateLignePrixRequest;
@@ -92,7 +93,9 @@ public class AchatController {
 
     @PatchMapping("/{id}/validate-paiement")
     @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE')")
-    public ResponseEntity<ApiResponse<AchatResponse>> validatePaiement(@PathVariable UUID id) {
-        return ResponseEntity.ok(ApiResponse.success(achatService.validatePaiement(id)));
+    public ResponseEntity<ApiResponse<AchatResponse>> validatePaiement(
+            @PathVariable UUID id,
+            @RequestParam(defaultValue = "CAISSE") ModePaiement modePaiement) {
+        return ResponseEntity.ok(ApiResponse.success(achatService.validatePaiement(id, modePaiement)));
     }
 }
