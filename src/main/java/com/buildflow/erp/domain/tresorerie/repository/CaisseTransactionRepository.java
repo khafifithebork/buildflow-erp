@@ -29,4 +29,15 @@ public interface CaisseTransactionRepository extends JpaRepository<CaisseTransac
             AND t.createdAt BETWEEN :start AND :end
             """)
     BigDecimal sumDebitsBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    // Cash outflows that count towards the hors-fiscalité result: same rule as
+    // achats — served the site, and no official invoice to declare.
+    @Query("""
+            SELECT COALESCE(SUM(t.montant), 0) FROM CaisseTransaction t
+            WHERE t.typeTransaction = com.buildflow.erp.domain.tresorerie.entity.TypeTransaction.DEBIT
+            AND t.impactAnalytiqueChantier = true
+            AND t.impactComptableFiscal = false
+            AND t.createdAt BETWEEN :start AND :end
+            """)
+    BigDecimal sumDebitsEffetChantierBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 }

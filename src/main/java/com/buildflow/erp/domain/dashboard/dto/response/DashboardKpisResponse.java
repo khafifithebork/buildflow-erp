@@ -22,6 +22,11 @@ public record DashboardKpisResponse(
         BigDecimal decaissementsGlobauxTtc,
         /** Same outflows net of the recoverable TVA on settled purchases. */
         BigDecimal decaissementsGlobauxHt,
+        /**
+         * Outflows retained by the hors-fiscalité reading: operations flagged
+         * effet chantier and not effet fiscal.
+         */
+        BigDecimal decaissementsEffetChantierHt,
 
         // Margin formulas.
         BigDecimal margeNetteComptableHt,

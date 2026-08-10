@@ -94,13 +94,29 @@ public class DashboardServiceImpl implements DashboardService {
                 .add(stPayeesTtc)
                 .add(salairesPayeesNet);
 
+        // Outflows retained by the hors-fiscalité reading. The two operational
+        // indicators decide membership: an operation counts when it genuinely
+        // served the site (effet chantier) and carries no official invoice to
+        // declare (effet fiscal). Anything fiscal drops out entirely.
+        //
+        // Only achats and caisse operations carry these flags, so they are the
+        // only outflows that can be classified. Sous-traitance payments and
+        // salaries have no such marking and are therefore not counted here —
+        // "on ne compte que l'effet chantier" read literally: unmarked is not
+        // marked.
+        BigDecimal decaissementsEffetChantierHt =
+                round(achatRepository.sumHtPayeesEffetChantierBetween(dateStart, dateEnd))
+                        .add(round(caisseTransactionRepository
+                                .sumDebitsEffetChantierBetween(dtStart, dtEnd)));
+
         // ── Margin formulas ───────────────────────────────────────────
         BigDecimal margeNetteComptableHt = round(
                 encaissementsGlobauxHt.subtract(decaissementsGlobauxTtc).add(valeurStocksGlobaleHt));
 
-        // The same margin read entirely on HT: no TVA on either side.
+        // Same shape as the marge nette, but the spend side keeps only the
+        // operations flagged effet chantier and not effet fiscal.
         BigDecimal resultatHorsFiscaliteHt = round(
-                encaissementsGlobauxHt.subtract(decaissementsGlobauxHt).add(valeurStocksGlobaleHt));
+                encaissementsGlobauxHt.subtract(decaissementsEffetChantierHt).add(valeurStocksGlobaleHt));
 
         BigDecimal margeEnCoursPrevisionnelleHt = round(
                 attachementsEnCoursHt.subtract(
@@ -119,6 +135,7 @@ public class DashboardServiceImpl implements DashboardService {
                 encaissementsGlobauxTtc,
                 decaissementsGlobauxTtc,
                 decaissementsGlobauxHt,
+                decaissementsEffetChantierHt,
                 margeNetteComptableHt,
                 resultatHorsFiscaliteHt,
                 margeEnCoursPrevisionnelleHt);
