@@ -47,6 +47,9 @@ public class DashboardServiceImpl implements DashboardService {
         // ── Balance KPIs (as of now) ─────────────────────────────────
         BigDecimal dettesFournisseursTtc = round(achatRepository.sumTtcNonPayees());
         BigDecimal dettesSousTraitantsTtc = round(contratSousTraitantRepository.sumResteAPayer());
+        // HT readings of the same debts, used by the margin formulas below.
+        BigDecimal dettesFournisseursHt = round(achatRepository.sumHtNonPayees());
+        BigDecimal dettesSousTraitantsHt = round(contratSousTraitantRepository.sumResteAPayerHt());
         BigDecimal paieAPayerNet = round(fichePaieRepository.sumNetAPayerNonPayees());
         BigDecimal attachementsEnCoursTtc = round(attachementRepository.sumTtcSoumis());
         BigDecimal attachementsEnCoursHt = round(attachementRepository.sumHtSoumis());
@@ -110,22 +113,28 @@ public class DashboardServiceImpl implements DashboardService {
                                 .sumDebitsEffetChantierBetween(dtStart, dtEnd)));
 
         // ── Margin formulas ───────────────────────────────────────────
+        // Every term HT: the outflows use the tax-free reading rather than TTC.
         BigDecimal margeNetteComptableHt = round(
-                encaissementsGlobauxHt.subtract(decaissementsGlobauxTtc).add(valeurStocksGlobaleHt));
+                encaissementsGlobauxHt.subtract(decaissementsGlobauxHt).add(valeurStocksGlobaleHt));
 
-        // Same shape as the marge nette, but the spend side keeps only the
-        // operations flagged effet chantier and not effet fiscal.
+        // Operational flows only: stock is a balance-sheet position, not a
+        // flow, so it is deliberately absent here even though the marge nette
+        // above includes it.
         BigDecimal resultatHorsFiscaliteHt = round(
-                encaissementsGlobauxHt.subtract(decaissementsEffetChantierHt).add(valeurStocksGlobaleHt));
+                encaissementsGlobauxHt.subtract(decaissementsEffetChantierHt));
 
+        // Also fully HT. Net salaries carry no TVA, so paieAPayerNet is already
+        // a tax-free figure and needs no HT counterpart.
         BigDecimal margeEnCoursPrevisionnelleHt = round(
                 attachementsEnCoursHt.subtract(
-                        dettesFournisseursTtc.add(dettesSousTraitantsTtc).add(paieAPayerNet)));
+                        dettesFournisseursHt.add(dettesSousTraitantsHt).add(paieAPayerNet)));
 
         return new DashboardKpisResponse(
                 month,
                 dettesFournisseursTtc,
                 dettesSousTraitantsTtc,
+                dettesFournisseursHt,
+                dettesSousTraitantsHt,
                 paieAPayerNet,
                 attachementsEnCoursTtc,
                 valeurStocksGlobaleHt,
