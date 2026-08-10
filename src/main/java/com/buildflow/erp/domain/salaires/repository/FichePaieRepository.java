@@ -38,12 +38,14 @@ public interface FichePaieRepository extends JpaRepository<FichePaie, UUID> {
     @Query("""
             SELECT COALESCE(SUM(f.netAPayer), 0) FROM FichePaie f
             WHERE f.statut = com.buildflow.erp.domain.salaires.entity.FichePaieStatut.PAYEE
+            AND (f.modePaiement IS NULL OR f.modePaiement <> com.buildflow.erp.common.paiement.ModePaiement.CAISSE)
             """)
     BigDecimal sumNetAPayerPayeesAllTime();
 
     @Query("""
             SELECT COALESCE(SUM(f.netAPayer), 0) FROM FichePaie f
             WHERE f.statut = com.buildflow.erp.domain.salaires.entity.FichePaieStatut.PAYEE
+            AND (f.modePaiement IS NULL OR f.modePaiement <> com.buildflow.erp.common.paiement.ModePaiement.CAISSE)
             AND f.periode = :periode
             """)
     BigDecimal sumNetAPayerPayeesByPeriode(@Param("periode") String periode);

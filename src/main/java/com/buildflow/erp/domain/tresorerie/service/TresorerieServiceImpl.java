@@ -144,6 +144,33 @@ public class TresorerieServiceImpl implements TresorerieService {
 
     @Override
     @Transactional
+    public void ajusterPourAchat(UUID chantierId, BigDecimal delta, String achatRef,
+                                 boolean impactAnalytiqueChantier, boolean impactComptableFiscal) {
+
+        if (delta.signum() == 0) {
+            return;
+        }
+
+        Caisse caisse = getOrCreateCaisse(chantierId);
+
+        // A correction is recorded as its own movement rather than by editing
+        // the original debit: the ledger stays append-only and the adjustment
+        // is visible for what it is.
+        boolean coutEnHausse = delta.signum() > 0;
+        applyTransaction(
+                caisse,
+                coutEnHausse ? TypeTransaction.DEBIT : TypeTransaction.CREDIT,
+                delta.abs(),
+                coutEnHausse ? "Ajustement achat (hausse)" : "Ajustement achat (baisse)",
+                achatRef,
+                null,
+                impactAnalytiqueChantier,
+                impactComptableFiscal
+        );
+    }
+
+    @Override
+    @Transactional
     public void debiterPourSalaire(UUID chantierId, BigDecimal montant, String reference) {
 
         Caisse caisse = getOrCreateCaisse(chantierId);

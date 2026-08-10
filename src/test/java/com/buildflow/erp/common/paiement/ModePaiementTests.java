@@ -205,7 +205,7 @@ class ModePaiementTests {
 
         AchatResponse achat = achatService.create(new CreateAchatRequest(
                 fournisseur.getId(), chantierId, LocalDate.now(), LocalDate.now().plusDays(7),
-                List.of(new CreateLigneAchatRequest(article.getId(), new BigDecimal("10"), 10.0, null)),
+                List.of(new CreateLigneAchatRequest(article.getId(), 10.0, 10.0, null)),
                 null, null));
 
         achatService.validateBL(achat.id(), "BL-" + suffix);

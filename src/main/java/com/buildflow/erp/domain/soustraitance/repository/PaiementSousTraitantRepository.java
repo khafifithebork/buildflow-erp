@@ -17,6 +17,7 @@ public interface PaiementSousTraitantRepository extends JpaRepository<PaiementSo
     @Query("""
             SELECT COALESCE(SUM(p.montant), 0) FROM PaiementSousTraitant p
             WHERE p.statut = com.buildflow.erp.domain.soustraitance.entity.PaiementStatut.PAYE
+            AND (p.modePaiement IS NULL OR p.modePaiement <> com.buildflow.erp.common.paiement.ModePaiement.CAISSE)
             AND p.datePaiement BETWEEN :start AND :end
             """)
     BigDecimal sumPayeesBetween(@Param("start") LocalDate start, @Param("end") LocalDate end);

@@ -41,6 +41,7 @@ public interface AchatRepository extends JpaRepository<Achat, UUID> {
     @Query("""
             SELECT COALESCE(SUM(a.ttc), 0) FROM Achat a
             WHERE a.statut = com.buildflow.erp.domain.achats.entity.AchatStatut.PAYE
+            AND (a.modePaiement IS NULL OR a.modePaiement <> com.buildflow.erp.common.paiement.ModePaiement.CAISSE)
             AND a.dateCommande BETWEEN :start AND :end
             """)
     BigDecimal sumTtcPayeesBetween(@Param("start") LocalDate start, @Param("end") LocalDate end);
@@ -51,6 +52,7 @@ public interface AchatRepository extends JpaRepository<Achat, UUID> {
     @Query("""
             SELECT COALESCE(SUM(a.ht), 0) FROM Achat a
             WHERE a.statut = com.buildflow.erp.domain.achats.entity.AchatStatut.PAYE
+            AND (a.modePaiement IS NULL OR a.modePaiement <> com.buildflow.erp.common.paiement.ModePaiement.CAISSE)
             AND a.dateCommande BETWEEN :start AND :end
             """)
     BigDecimal sumHtPayeesBetween(@Param("start") LocalDate start, @Param("end") LocalDate end);
@@ -63,6 +65,7 @@ public interface AchatRepository extends JpaRepository<Achat, UUID> {
             WHERE a.statut = com.buildflow.erp.domain.achats.entity.AchatStatut.PAYE
             AND a.impactAnalytiqueChantier = true
             AND a.impactComptableFiscal = false
+            AND (a.modePaiement IS NULL OR a.modePaiement <> com.buildflow.erp.common.paiement.ModePaiement.CAISSE)
             AND a.dateCommande BETWEEN :start AND :end
             """)
     BigDecimal sumHtPayeesEffetChantierBetween(@Param("start") LocalDate start, @Param("end") LocalDate end);

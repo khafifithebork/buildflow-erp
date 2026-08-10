@@ -91,8 +91,9 @@ public class AchatServiceImpl implements AchatService {
                 ligne.setBpuLigne(bpuLigne);
             }
 
-            // Price is a double now; convert once for the exact total.
-            BigDecimal ligneTotal = ligneReq.quantite()
+            // Quantity and price are both doubles; convert each once and do the
+            // multiplication in BigDecimal so the invoiced total stays exact.
+            BigDecimal ligneTotal = BigDecimal.valueOf(ligneReq.quantite())
                     .multiply(BigDecimal.valueOf(ligneReq.prixUnitaire()))
                     .setScale(2, RoundingMode.HALF_UP);
             ligne.setTotal(ligneTotal);
@@ -222,12 +223,29 @@ public class AchatServiceImpl implements AchatService {
                 .findFirst()
                 .orElseThrow(() -> new ResourceNotFoundException("LigneAchat", ligneId));
 
+        BigDecimal ttcAvant = achat.getTtc();
+
         ligne.setPrixUnitaire(request.prixUnitaire());
-        ligne.setTotal(ligne.getQuantite()
+        ligne.setTotal(BigDecimal.valueOf(ligne.getQuantite())
                 .multiply(BigDecimal.valueOf(request.prixUnitaire()))
                 .setScale(2, RoundingMode.HALF_UP));
 
         recomputeTotals(achat);
+
+        // An order already settled from the caisse has moved real money. Leaving
+        // the ledger on the old amount while the order reports the new one makes
+        // every derived figure — the marges above all — disagree with the cash
+        // that actually left. Post the difference as its own movement so the two
+        // stay reconciled. Other payment modes clear outside the caisse, so
+        // there is nothing here to correct.
+        if (achat.getStatut() == AchatStatut.PAYE && achat.getModePaiement() == ModePaiement.CAISSE) {
+            tresorerieService.ajusterPourAchat(
+                    achat.getChantier().getId(),
+                    achat.getTtc().subtract(ttcAvant),
+                    achat.getRef(),
+                    achat.isImpactAnalytiqueChantier(),
+                    achat.isImpactComptableFiscal());
+        }
 
         return achatMapper.toResponse(achatRepository.save(achat));
     }

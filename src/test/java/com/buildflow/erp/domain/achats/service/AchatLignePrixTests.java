@@ -1,6 +1,9 @@
 package com.buildflow.erp.domain.achats.service;
 
 import com.buildflow.erp.common.exception.ResourceNotFoundException;
+import com.buildflow.erp.common.paiement.ModePaiement;
+import com.buildflow.erp.domain.tresorerie.dto.request.CreateTransactionRequest;
+import com.buildflow.erp.domain.tresorerie.entity.TypeTransaction;
 import com.buildflow.erp.domain.achats.dto.request.CreateAchatRequest;
 import com.buildflow.erp.domain.achats.dto.request.CreateLigneAchatRequest;
 import com.buildflow.erp.domain.achats.dto.request.UpdateLignePrixRequest;
@@ -45,13 +48,15 @@ class AchatLignePrixTests {
     @Autowired FournisseurRepository fournisseurRepository;
     @Autowired ArticleRepository articleRepository;
     @Autowired CategorieArticleRepository categorieArticleRepository;
+    @Autowired com.buildflow.erp.domain.tresorerie.repository.CaisseRepository caisseRepository;
+    @Autowired com.buildflow.erp.domain.tresorerie.service.TresorerieService tresorerieService;
 
     private static final AtomicInteger SEQ = new AtomicInteger();
 
     @Test
     void repricingALineRecomputesTheLineTotalAndTheOrderTotals() {
         // 2 × 100 = 200 HT, +20% TVA = 240 TTC
-        AchatResponse achat = createAchat(new BigDecimal("2"), 100.00);
+        AchatResponse achat = createAchat(2, 100.00);
         assertThat(achat.ht()).isEqualByComparingTo("200.00");
         assertThat(achat.ttc()).isEqualByComparingTo("240.00");
 
@@ -70,7 +75,7 @@ class AchatLignePrixTests {
 
     @Test
     void repricingSurvivesAReload() {
-        AchatResponse achat = createAchat(new BigDecimal("3"), 10.00);
+        AchatResponse achat = createAchat(3, 10.00);
         UUID ligneId = achat.lignes().getFirst().id();
 
         achatService.updateLignePrix(achat.id(), ligneId, new UpdateLignePrixRequest(11.50));
@@ -82,7 +87,7 @@ class AchatLignePrixTests {
 
     @Test
     void repricingToZeroIsAllowedAndZeroesTheOrder() {
-        AchatResponse achat = createAchat(new BigDecimal("4"), 25.00);
+        AchatResponse achat = createAchat(4, 25.00);
         UUID ligneId = achat.lignes().getFirst().id();
 
         AchatResponse updated = achatService.updateLignePrix(
@@ -95,8 +100,8 @@ class AchatLignePrixTests {
 
     @Test
     void aLineFromAnotherOrderIsNotFound() {
-        AchatResponse first = createAchat(new BigDecimal("1"), 10.00);
-        AchatResponse second = createAchat(new BigDecimal("1"), 10.00);
+        AchatResponse first = createAchat(1, 10.00);
+        AchatResponse second = createAchat(1, 10.00);
 
         UUID foreignLigneId = second.lignes().getFirst().id();
 
@@ -130,7 +135,7 @@ class AchatLignePrixTests {
      */
     @Test
     void aUnitPriceKeepsMoreThanTwoDecimals() {
-        AchatResponse achat = createAchat(new BigDecimal("1000"), 0.1234);
+        AchatResponse achat = createAchat(1000, 0.1234);
 
         assertThat(achat.lignes().getFirst().prixUnitaire()).isEqualTo(0.1234);
         assertThat(achatService.findById(achat.id()).lignes().getFirst().prixUnitaire())
@@ -144,7 +149,7 @@ class AchatLignePrixTests {
     @Test
     void theLineTotalIsStillRoundedToCentimes() {
         // 3 × 10.005 = 30.015 → 30.02 HALF_UP
-        AchatResponse achat = createAchat(new BigDecimal("3"), 10.005);
+        AchatResponse achat = createAchat(3, 10.005);
 
         assertThat(achat.lignes().getFirst().total()).isEqualByComparingTo("30.02");
         assertThat(achat.ht()).isEqualByComparingTo("30.02");
@@ -154,7 +159,7 @@ class AchatLignePrixTests {
     /** Re-pricing accepts sub-centime values too. */
     @Test
     void repricingAcceptsMoreThanTwoDecimals() {
-        AchatResponse achat = createAchat(new BigDecimal("200"), 1.00);
+        AchatResponse achat = createAchat(200, 1.00);
         UUID ligneId = achat.lignes().getFirst().id();
 
         AchatResponse updated = achatService.updateLignePrix(
@@ -165,16 +170,104 @@ class AchatLignePrixTests {
         assertThat(updated.ht()).isEqualByComparingTo("66.66");
     }
 
+    /**
+     * Quantities are DOUBLE PRECISION too, so a line can be ordered in
+     * fractional units without the value being rounded to three decimals.
+     */
+    @Test
+    void aQuantityKeepsMoreThanThreeDecimals() {
+        AchatResponse achat = createAchat(2.12345, 100.00);
+
+        assertThat(achat.lignes().getFirst().quantite()).isEqualTo(2.12345);
+        assertThat(achatService.findById(achat.id()).lignes().getFirst().quantite())
+                .isEqualTo(2.12345);
+        // 2.12345 x 100 = 212.345 -> 212.35 HALF_UP
+        assertThat(achat.ht()).isEqualByComparingTo("212.35");
+    }
+
+    /**
+     * Regression: re-pricing an order already settled from the caisse used to
+     * move every derived figure while the cash ledger stayed on the amount
+     * actually paid, so the margins drifted for free. The difference is now
+     * posted back to the caisse as its own movement.
+     */
+    @Test
+    void repricingAPaidOrderReconcilesTheCaisse() {
+        AchatResponse achat = createAchat(10, 100.00);   // 1000 HT / 1200 TTC
+        UUID chantierId = chantierIdOf(achat);
+        UUID caisseId = caisseRepository.findByChantierId(chantierId).getFirst().getId();
+
+        tresorerieService.enregistrerTransaction(caisseId, new CreateTransactionRequest(
+                TypeTransaction.CREDIT, new BigDecimal("5000.00"), "Appro", null, null, null, null));
+
+        achatService.validateBL(achat.id(), "BL");
+        achatService.validateFacture(achat.id(), "FA");
+        achatService.validatePaiement(achat.id(), ModePaiement.CAISSE);
+
+        BigDecimal soldeApresPaiement = caisseRepository.findById(caisseId).orElseThrow().getSolde();
+        assertThat(soldeApresPaiement).isEqualByComparingTo("3800.00");   // 5000 - 1200
+
+        // Halve the price: the order drops to 600 TTC, so 600 comes back.
+        achatService.updateLignePrix(
+                achat.id(), achat.lignes().getFirst().id(), new UpdateLignePrixRequest(50.00));
+
+        assertThat(caisseRepository.findById(caisseId).orElseThrow().getSolde())
+                .isEqualByComparingTo("4400.00");                          // 5000 - 600
+    }
+
+    /** Raising the price on a settled order takes the extra out of the caisse. */
+    @Test
+    void repricingUpwardDebitsTheDifference() {
+        AchatResponse achat = createAchat(10, 100.00);
+        UUID caisseId = caisseRepository.findByChantierId(chantierIdOf(achat)).getFirst().getId();
+
+        tresorerieService.enregistrerTransaction(caisseId, new CreateTransactionRequest(
+                TypeTransaction.CREDIT, new BigDecimal("5000.00"), "Appro", null, null, null, null));
+        achatService.validateBL(achat.id(), "BL");
+        achatService.validateFacture(achat.id(), "FA");
+        achatService.validatePaiement(achat.id(), ModePaiement.CAISSE);
+
+        achatService.updateLignePrix(
+                achat.id(), achat.lignes().getFirst().id(), new UpdateLignePrixRequest(150.00));
+
+        // 10 x 150 = 1500 HT -> 1800 TTC, so 600 more leaves the caisse.
+        assertThat(caisseRepository.findById(caisseId).orElseThrow().getSolde())
+                .isEqualByComparingTo("3200.00");                          // 5000 - 1800
+    }
+
+    /** A virement never touched the caisse, so re-pricing must not either. */
+    @Test
+    void repricingAnOrderPaidByVirementLeavesTheCaisseAlone() {
+        AchatResponse achat = createAchat(10, 100.00);
+        UUID caisseId = caisseRepository.findByChantierId(chantierIdOf(achat)).getFirst().getId();
+
+        achatService.validateBL(achat.id(), "BL");
+        achatService.validateFacture(achat.id(), "FA");
+        achatService.validatePaiement(achat.id(), ModePaiement.VIREMENT);
+
+        achatService.updateLignePrix(
+                achat.id(), achat.lignes().getFirst().id(), new UpdateLignePrixRequest(50.00));
+
+        assertThat(caisseRepository.findById(caisseId).orElseThrow().getSolde())
+                .isEqualByComparingTo("0.00");
+    }
+
     /** The ref is server-assigned now, and follows the ACH-<year>-NNN shape. */
     @Test
     void createdOrderGetsAGeneratedRef() {
-        AchatResponse achat = createAchat(new BigDecimal("1"), 1.00);
+        AchatResponse achat = createAchat(1, 1.00);
         assertThat(achat.ref()).matches("^ACH-\\d{4}-\\d{3,}$");
+    }
+
+    private UUID chantierIdOf(AchatResponse achat) {
+        return chantierService.findAll().stream()
+                .filter(c -> c.nom().equals(achat.chantierNom()))
+                .findFirst().orElseThrow().id();
     }
 
     // ── Fixtures ──────────────────────────────────────────────────────
 
-    private AchatResponse createAchat(BigDecimal quantite, double prixUnitaire) {
+    private AchatResponse createAchat(double quantite, double prixUnitaire) {
         String suffix = "IT-" + SEQ.incrementAndGet() + "-" + UUID.randomUUID().toString().substring(0, 8);
 
         UUID chantierId = chantierService.create(new CreateChantierRequest(

@@ -32,8 +32,10 @@ public class LigneAchat extends BaseEntity {
     @Column(nullable = false, length = 20)
     private String unite; // Snapshot
 
-    @Column(nullable = false, precision = 15, scale = 3)
-    private BigDecimal quantite;
+    // DOUBLE PRECISION, same as prixUnitaire below: both sides of the line
+    // total hold the same kind of value. The total stays BigDecimal.
+    @Column(nullable = false)
+    private double quantite;
 
     // DOUBLE PRECISION: a unit price may carry more than two decimals. The
     // line total below stays BigDecimal — that is the invoiced figure.

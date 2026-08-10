@@ -37,6 +37,17 @@ public interface TresorerieService {
                           boolean impactAnalytiqueChantier, boolean impactComptableFiscal);
 
     /**
+     * Corrects the caisse after a settled achat's amount changed.
+     *
+     * <p>A positive delta means the order now costs more and the caisse owes
+     * the difference; a negative delta refunds it. Without this, re-pricing a
+     * paid order leaves the ledger showing the amount that was actually paid
+     * while every derived figure reads the new one.
+     */
+    void ajusterPourAchat(UUID chantierId, BigDecimal delta, String achatRef,
+                          boolean impactAnalytiqueChantier, boolean impactComptableFiscal);
+
+    /**
      * Cross-domain method: called by SalaireServiceImpl when a FichePaie is paid
      * with modePaiement=CAISSE. Debits the caisse associated with the fiche's chantier.
      */
