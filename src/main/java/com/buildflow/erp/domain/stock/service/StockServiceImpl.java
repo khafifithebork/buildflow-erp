@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 import java.util.UUID;
 
@@ -54,15 +55,20 @@ public class StockServiceImpl implements StockService {
                         return newStock;
                     });
 
-            // 2. Update the theoretical quantity
-            stock.setQuantiteTheorique(stock.getQuantiteTheorique().add(ligne.getQuantite()));
+            // 2. Update the theoretical quantity.
+            // The order line holds a double now; stock quantities stay
+            // DECIMAL(15,3), so a line ordered with more than three decimals is
+            // rounded on the way in rather than silently truncated.
+            BigDecimal quantiteEnStock = BigDecimal.valueOf(ligne.getQuantite())
+                    .setScale(3, RoundingMode.HALF_UP);
+            stock.setQuantiteTheorique(stock.getQuantiteTheorique().add(quantiteEnStock));
             stockArticleRepository.save(stock);
 
             // 3. Record the immutable ledger entry
             MouvementStock mouvement = new MouvementStock();
             mouvement.setStockArticle(stock);
             mouvement.setTypeMouvement(TypeMouvement.ENTREE);
-            mouvement.setQuantite(ligne.getQuantite());
+            mouvement.setQuantite(quantiteEnStock);
             mouvement.setDocumentRef(achat.getRef()); // Traceability!
             mouvementStockRepository.save(mouvement);
         }

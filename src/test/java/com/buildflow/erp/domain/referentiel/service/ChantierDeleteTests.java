@@ -212,7 +212,7 @@ class ChantierDeleteTests {
                 LocalDate.now(),
                 LocalDate.now().plusDays(7),
                 List.of(new CreateLigneAchatRequest(
-                        article.getId(), new BigDecimal("2"), 100.00, null)),
+                        article.getId(), 2.0, 100.00, null)),
                 analytique,
                 fiscal));
     }

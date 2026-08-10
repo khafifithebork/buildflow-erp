@@ -7,7 +7,7 @@ public record LigneAchatResponse(
         UUID id,
         String articleCode,
         String designation,
-        BigDecimal quantite,
+        double quantite,
         String unite,
         double prixUnitaire,
         BigDecimal total,
