@@ -20,8 +20,17 @@ public record DashboardKpisResponse(
         BigDecimal decaissementsCaisseTtc,
         BigDecimal encaissementsGlobauxTtc,
         BigDecimal decaissementsGlobauxTtc,
+        /** Same outflows net of the recoverable TVA on settled purchases. */
+        BigDecimal decaissementsGlobauxHt,
+        /**
+         * Outflows retained by the hors-fiscalité reading: operations flagged
+         * effet chantier and not effet fiscal.
+         */
+        BigDecimal decaissementsEffetChantierHt,
 
         // Margin formulas.
         BigDecimal margeNetteComptableHt,
+        /** The margin read entirely on HT — no TVA on either side. */
+        BigDecimal resultatHorsFiscaliteHt,
         BigDecimal margeEnCoursPrevisionnelleHt
 ) {}

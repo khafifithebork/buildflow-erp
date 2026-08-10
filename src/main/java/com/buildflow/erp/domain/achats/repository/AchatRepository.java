@@ -36,4 +36,26 @@ public interface AchatRepository extends JpaRepository<Achat, UUID> {
             AND a.dateCommande BETWEEN :start AND :end
             """)
     BigDecimal sumTtcPayeesBetween(@Param("start") LocalDate start, @Param("end") LocalDate end);
+
+    // Same set of paid orders, valued HT. Achats are the only outflow that
+    // carries a separable TVA, so this is what makes a tax-free reading of the
+    // décaissements possible at all.
+    @Query("""
+            SELECT COALESCE(SUM(a.ht), 0) FROM Achat a
+            WHERE a.statut = com.buildflow.erp.domain.achats.entity.AchatStatut.PAYE
+            AND a.dateCommande BETWEEN :start AND :end
+            """)
+    BigDecimal sumHtPayeesBetween(@Param("start") LocalDate start, @Param("end") LocalDate end);
+
+    // Paid orders that count towards the hors-fiscalité result: the purchase
+    // genuinely served the site, and there is no official invoice to declare.
+    // An order carrying a fiscal effect drops out of the total entirely.
+    @Query("""
+            SELECT COALESCE(SUM(a.ht), 0) FROM Achat a
+            WHERE a.statut = com.buildflow.erp.domain.achats.entity.AchatStatut.PAYE
+            AND a.impactAnalytiqueChantier = true
+            AND a.impactComptableFiscal = false
+            AND a.dateCommande BETWEEN :start AND :end
+            """)
+    BigDecimal sumHtPayeesEffetChantierBetween(@Param("start") LocalDate start, @Param("end") LocalDate end);
 }

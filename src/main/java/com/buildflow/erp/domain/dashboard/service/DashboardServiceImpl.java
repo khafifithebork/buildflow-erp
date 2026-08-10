@@ -81,9 +81,42 @@ public class DashboardServiceImpl implements DashboardService {
                 .add(stPayeesTtc)
                 .add(salairesPayeesNet);
 
+        // Same outflows with the tax stripped out. Only achats carry a
+        // separable TVA — caisse debits, sous-traitance payments and net
+        // salaries are recorded as single amounts with no tax breakdown — so
+        // the achats component swaps to HT and the rest passes through
+        // unchanged. That is the whole of the "hors fiscalité" adjustment, and
+        // the difference between the two figures is the recoverable TVA on
+        // settled purchases.
+        BigDecimal achatsPayeesHt = round(achatRepository.sumHtPayeesBetween(dateStart, dateEnd));
+        BigDecimal decaissementsGlobauxHt = decaissementsCaisseTtc
+                .add(achatsPayeesHt)
+                .add(stPayeesTtc)
+                .add(salairesPayeesNet);
+
+        // Outflows retained by the hors-fiscalité reading. The two operational
+        // indicators decide membership: an operation counts when it genuinely
+        // served the site (effet chantier) and carries no official invoice to
+        // declare (effet fiscal). Anything fiscal drops out entirely.
+        //
+        // Only achats and caisse operations carry these flags, so they are the
+        // only outflows that can be classified. Sous-traitance payments and
+        // salaries have no such marking and are therefore not counted here —
+        // "on ne compte que l'effet chantier" read literally: unmarked is not
+        // marked.
+        BigDecimal decaissementsEffetChantierHt =
+                round(achatRepository.sumHtPayeesEffetChantierBetween(dateStart, dateEnd))
+                        .add(round(caisseTransactionRepository
+                                .sumDebitsEffetChantierBetween(dtStart, dtEnd)));
+
         // ── Margin formulas ───────────────────────────────────────────
         BigDecimal margeNetteComptableHt = round(
                 encaissementsGlobauxHt.subtract(decaissementsGlobauxTtc).add(valeurStocksGlobaleHt));
+
+        // Same shape as the marge nette, but the spend side keeps only the
+        // operations flagged effet chantier and not effet fiscal.
+        BigDecimal resultatHorsFiscaliteHt = round(
+                encaissementsGlobauxHt.subtract(decaissementsEffetChantierHt).add(valeurStocksGlobaleHt));
 
         BigDecimal margeEnCoursPrevisionnelleHt = round(
                 attachementsEnCoursHt.subtract(
@@ -101,7 +134,10 @@ public class DashboardServiceImpl implements DashboardService {
                 decaissementsCaisseTtc,
                 encaissementsGlobauxTtc,
                 decaissementsGlobauxTtc,
+                decaissementsGlobauxHt,
+                decaissementsEffetChantierHt,
                 margeNetteComptableHt,
+                resultatHorsFiscaliteHt,
                 margeEnCoursPrevisionnelleHt);
     }
 
