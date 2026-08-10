@@ -31,4 +31,14 @@ public interface ContratSousTraitantRepository extends JpaRepository<ContratSous
             WHERE c.montantPaye < c.montantTtc
             """)
     BigDecimal sumResteAPayer();
+
+    // Outstanding balance valued HT. montantPaye is a TTC figure, so the
+    // remainder is prorated by each contract's own HT/TTC ratio rather than
+    // assuming one rate — contracts can carry different TVA amounts.
+    @Query("""
+            SELECT COALESCE(SUM((c.montantTtc - c.montantPaye) * c.montantHt / c.montantTtc), 0)
+            FROM ContratSousTraitant c
+            WHERE c.montantPaye < c.montantTtc AND c.montantTtc > 0
+            """)
+    BigDecimal sumResteAPayerHt();
 }

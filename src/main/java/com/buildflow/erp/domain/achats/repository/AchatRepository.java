@@ -28,6 +28,14 @@ public interface AchatRepository extends JpaRepository<Achat, UUID> {
             """)
     BigDecimal sumTtcNonPayees();
 
+    // Same outstanding orders valued HT, for the margin formulas that read
+    // everything net of tax.
+    @Query("""
+            SELECT COALESCE(SUM(a.ht), 0) FROM Achat a
+            WHERE a.statut <> com.buildflow.erp.domain.achats.entity.AchatStatut.PAYE
+            """)
+    BigDecimal sumHtNonPayees();
+
     // No explicit "date paiement" field on Achat — dateCommande is used as the
     // best-available proxy for which period a paid order's outflow falls in.
     @Query("""

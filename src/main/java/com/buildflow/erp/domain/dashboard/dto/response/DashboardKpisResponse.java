@@ -8,6 +8,9 @@ public record DashboardKpisResponse(
         // Balance KPIs — as of now, not period-scoped.
         BigDecimal dettesFournisseursTtc,
         BigDecimal dettesSousTraitantsTtc,
+        /** Same debts read net of tax — what the margin formulas use. */
+        BigDecimal dettesFournisseursHt,
+        BigDecimal dettesSousTraitantsHt,
         BigDecimal paieAPayerNet,
         BigDecimal attachementsEnCoursTtc,
         BigDecimal valeurStocksGlobaleHt,
