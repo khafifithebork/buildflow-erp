@@ -14,4 +14,11 @@ public interface StockService {
     /** Everything held in the central dépôt (stock with no chantier). */
     PageResponse<StockArticleResponse> getStockDepot(Pageable pageable);
     StockArticleResponse createMouvement(CreateMouvementStockRequest request);
+
+    /**
+     * Incorporates material into the works: moves quantity from available to
+     * posé at one location, without changing where it is.
+     */
+    StockArticleResponse affecterAuxTravaux(
+            com.buildflow.erp.domain.stock.dto.request.AffecterTravauxRequest request);
 }

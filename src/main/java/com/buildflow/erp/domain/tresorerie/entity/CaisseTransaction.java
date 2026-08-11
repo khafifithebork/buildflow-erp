@@ -46,6 +46,14 @@ public class CaisseTransaction extends BaseEntity {
     @Column(nullable = false)
     private boolean ajustement = false;
 
+    /**
+     * True once this movement has been cancelled. The row stays — the reversing
+     * entry is what puts the balance back — so the ledger still shows the
+     * original and its correction side by side.
+     */
+    @Column(nullable = false)
+    private boolean annule = false;
+
     /** "L'achat a-t-il réellement servi au chantier ?" — analytic (site cost) impact. */
     @Column(name = "impact_analytique_chantier", nullable = false)
     private boolean impactAnalytiqueChantier = false;

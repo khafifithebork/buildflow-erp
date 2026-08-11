@@ -36,6 +36,15 @@ public class StockArticle extends BaseEntity {
     @Column(name = "quantite_theorique", nullable = false, precision = 15, scale = 3)
     private BigDecimal quantiteTheorique = BigDecimal.ZERO;
 
+    /**
+     * Quantity incorporated into the works at this location — "posé". Distinct
+     * from where the stock sits: a chantier holds both material still waiting
+     * ({@code quantiteTheorique}) and material already laid. Affecting to the
+     * works moves quantity between the two without changing location.
+     */
+    @Column(name = "quantite_travaux", nullable = false, precision = 15, scale = 3)
+    private BigDecimal quantiteTravaux = BigDecimal.ZERO;
+
     @Column(name = "seuil_alerte", nullable = false, precision = 15, scale = 3)
     private BigDecimal seuilAlerte = BigDecimal.ZERO;
 }

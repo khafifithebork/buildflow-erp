@@ -39,6 +39,14 @@ public class StockController {
         return ResponseEntity.ok(ApiResponse.success(stockService.getStockDepot(pageable)));
     }
 
+    /** Incorporates material into the works at one location. */
+    @PostMapping("/affectation-travaux")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MAGASINIER', 'PM', 'CHEF_CHANTIER')")
+    public ResponseEntity<ApiResponse<StockArticleResponse>> affecterAuxTravaux(
+            @Valid @RequestBody com.buildflow.erp.domain.stock.dto.request.AffecterTravauxRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(stockService.affecterAuxTravaux(request)));
+    }
+
     @PostMapping("/mouvements")
     @PreAuthorize("hasAnyRole('ADMIN', 'MAGASINIER', 'PM')")
     public ResponseEntity<ApiResponse<StockArticleResponse>> createMouvement(

@@ -92,6 +92,58 @@ public class TresorerieServiceImpl implements TresorerieService {
 
     @Override
     @Transactional
+    public CaisseTransactionResponse annulerTransaction(UUID caisseId, UUID transactionId, String motif) {
+        CaisseTransaction origine = transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new ResourceNotFoundException("CaisseTransaction", transactionId));
+
+        if (!origine.getCaisse().getId().equals(caisseId)) {
+            throw new ResourceNotFoundException("CaisseTransaction", transactionId);
+        }
+        if (origine.isAnnule()) {
+            throw new BusinessRuleException(
+                    "Cette opération a déjà été annulée.");
+        }
+        if (origine.isAjustement()) {
+            throw new BusinessRuleException(
+                    "Une écriture de correction ne s'annule pas : annulez l'opération d'origine.");
+        }
+
+        // Reverse it: a credit undoes a debit and the other way round. Posted
+        // as its own flagged movement rather than deleting the original, so the
+        // ledger keeps both what happened and what corrected it — and the
+        // décaissements netting already knows to discount a flagged credit.
+        TypeTransaction inverse = origine.getTypeTransaction() == TypeTransaction.DEBIT
+                ? TypeTransaction.CREDIT
+                : TypeTransaction.DEBIT;
+
+        String libelle = motif != null && !motif.isBlank()
+                ? "Annulation : " + motif
+                : "Annulation : " + origine.getMotif();
+
+        applyTransaction(
+                origine.getCaisse(),
+                inverse,
+                origine.getMontant(),
+                libelle,
+                origine.getReferenceDocument(),
+                origine.getBpuLigne(),
+                origine.isImpactAnalytiqueChantier(),
+                origine.isImpactComptableFiscal(),
+                true
+        );
+
+        origine.setAnnule(true);
+        CaisseTransaction saved = transactionRepository.save(origine);
+
+        log.info("Opération de caisse annulée : {} {} sur {} ({})",
+                origine.getTypeTransaction(), origine.getMontant(),
+                origine.getCaisse().getCode(), libelle);
+
+        return caisseMapper.toTransactionResponse(saved);
+    }
+
+    @Override
+    @Transactional
     public CaisseTransactionResponse updateTransactionIndicateurs(
             UUID caisseId, UUID transactionId, UpdateIndicateursRequest request) {
 
