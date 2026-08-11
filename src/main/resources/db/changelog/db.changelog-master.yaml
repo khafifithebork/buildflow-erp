@@ -107,3 +107,6 @@ databaseChangeLog:
   - include:
       file: db/changelog/changes/036-widen-quantite-achat-precision.sql
       relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/037-flag-caisse-adjustments.sql
+      relativeToChangelogFile: false

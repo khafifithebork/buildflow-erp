@@ -37,6 +37,15 @@ public class CaisseTransaction extends BaseEntity {
     @JoinColumn(name = "bpu_ligne_id")
     private BpuLigne bpuLigne;
 
+    /**
+     * True when this movement corrects an earlier one rather than being a
+     * movement in its own right — a refund after a settled order was re-priced,
+     * for instance. Décaissements net these out; ordinary credits such as
+     * funding the caisse are not netted, because they are money coming in.
+     */
+    @Column(nullable = false)
+    private boolean ajustement = false;
+
     /** "L'achat a-t-il réellement servi au chantier ?" — analytic (site cost) impact. */
     @Column(name = "impact_analytique_chantier", nullable = false)
     private boolean impactAnalytiqueChantier = false;

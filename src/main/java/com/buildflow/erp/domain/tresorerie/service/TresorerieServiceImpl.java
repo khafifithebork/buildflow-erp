@@ -84,7 +84,8 @@ public class TresorerieServiceImpl implements TresorerieService {
         CaisseTransaction created = applyTransaction(caisse, request.typeTransaction(), request.montant(),
                 request.motif(), request.referenceDocument(), bpuLigne,
                 Boolean.TRUE.equals(request.impactAnalytiqueChantier()),
-                Boolean.TRUE.equals(request.impactComptableFiscal()));
+                Boolean.TRUE.equals(request.impactComptableFiscal()),
+                false);
 
         return caisseMapper.toTransactionResponse(created);
     }
@@ -138,7 +139,8 @@ public class TresorerieServiceImpl implements TresorerieService {
                 achatRef,
                 null,
                 impactAnalytiqueChantier,
-                impactComptableFiscal
+                impactComptableFiscal,
+                false
         );
     }
 
@@ -165,7 +167,8 @@ public class TresorerieServiceImpl implements TresorerieService {
                 achatRef,
                 null,
                 impactAnalytiqueChantier,
-                impactComptableFiscal
+                impactComptableFiscal,
+                true
         );
     }
 
@@ -184,6 +187,7 @@ public class TresorerieServiceImpl implements TresorerieService {
                 null,
                 // Payroll is not a purchase: neither indicator applies by default.
                 // Finance can still tick them afterwards from the Caisse view.
+                false,
                 false,
                 false
         );
@@ -236,7 +240,8 @@ public class TresorerieServiceImpl implements TresorerieService {
 
     private CaisseTransaction applyTransaction(Caisse caisse, TypeTransaction type, BigDecimal montant,
                                                String motif, String referenceDocument, BpuLigne bpuLigne,
-                                               boolean impactAnalytiqueChantier, boolean impactComptableFiscal) {
+                                               boolean impactAnalytiqueChantier, boolean impactComptableFiscal,
+                                               boolean ajustement) {
         if (type == TypeTransaction.DEBIT) {
             BigDecimal newSolde = caisse.getSolde().subtract(montant);
             if (newSolde.compareTo(BigDecimal.ZERO) < 0) {
@@ -266,6 +271,7 @@ public class TresorerieServiceImpl implements TresorerieService {
         txn.setBpuLigne(bpuLigne);
         txn.setImpactAnalytiqueChantier(impactAnalytiqueChantier);
         txn.setImpactComptableFiscal(impactComptableFiscal);
+        txn.setAjustement(ajustement);
         return transactionRepository.save(txn);
     }
 }
