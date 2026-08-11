@@ -9,6 +9,7 @@ import com.buildflow.erp.domain.referentiel.entity.ChantierStatut;
 import com.buildflow.erp.domain.referentiel.repository.ArticleRepository;
 import com.buildflow.erp.domain.referentiel.repository.CategorieArticleRepository;
 import com.buildflow.erp.domain.referentiel.service.ChantierService;
+import com.buildflow.erp.domain.stock.dto.request.AffecterTravauxRequest;
 import com.buildflow.erp.domain.stock.dto.request.CreateMouvementStockRequest;
 import com.buildflow.erp.domain.stock.dto.response.StockArticleResponse;
 import com.buildflow.erp.domain.stock.entity.TypeMouvement;
@@ -139,12 +140,12 @@ class StockDepotTests {
     }
 
     /**
-     * The point of the whole change: the two dashboard figures are computed,
-     * they add up to the global total, and a transfer shifts value between them
-     * without changing that total.
+     * The dashboard split is by AVAILABILITY, not by location: Dépôts is what is
+     * still in stock, En Travaux is what has been posé. Moving material between
+     * a warehouse and a site changes neither — it is available in both places.
      */
     @Test
-    void theDashboardSplitAddsUpAndFollowsATransfer() {
+    void aLocationTransferDoesNotMoveTheDashboardSplit() {
         UUID articleId = newArticle();
         UUID chantierId = newChantier();
 
@@ -153,18 +154,81 @@ class StockDepotTests {
 
         var before = dashboardService.getKpis(null);
         assertThat(before.valeurStocksDepotHt().add(before.valeurStocksEnTravauxHt()))
+                .as("the split always sums to the total")
                 .isEqualByComparingTo(before.valeurStocksGlobaleHt());
 
         stockService.createMouvement(new CreateMouvementStockRequest(
                 articleId, null, TypeMouvement.TRANSFERT, new BigDecimal("40"), null, chantierId));
 
         var after = dashboardService.getKpis(null);
-
         assertThat(after.valeurStocksGlobaleHt()).isEqualByComparingTo(before.valeurStocksGlobaleHt());
-        assertThat(after.valeurStocksDepotHt())
-                .isEqualByComparingTo(before.valeurStocksDepotHt().subtract(new BigDecimal("4000.00")));
-        assertThat(after.valeurStocksEnTravauxHt())
-                .isEqualByComparingTo(before.valeurStocksEnTravauxHt().add(new BigDecimal("4000.00")));
+        assertThat(after.valeurStocksDepotHt()).isEqualByComparingTo(before.valeurStocksDepotHt());
+        assertThat(after.valeurStocksEnTravauxHt()).isEqualByComparingTo(before.valeurStocksEnTravauxHt());
+    }
+
+    /**
+     * Affecting to the works is what moves the split: quantity goes from
+     * available to posé at the same location, so value shifts from Dépôts to
+     * En Travaux while the total stays put.
+     */
+    @Test
+    void affectingToTheWorksMovesTheSplitWithoutChangingTheTotal() {
+        UUID articleId = newArticle();   // 100 MAD each
+
+        stockService.createMouvement(new CreateMouvementStockRequest(
+                articleId, null, TypeMouvement.ENTREE, new BigDecimal("100"), null, null));
+
+        var before = dashboardService.getKpis(null);
+
+        StockArticleResponse after = stockService.affecterAuxTravaux(
+                new AffecterTravauxRequest(articleId, null, new BigDecimal("30"), "Pose"));
+
+        assertThat(after.quantiteTheorique()).isEqualByComparingTo("70");
+        assertThat(after.quantiteTravaux()).isEqualByComparingTo("30");
+
+        var k = dashboardService.getKpis(null);
+        assertThat(k.valeurStocksGlobaleHt())
+                .as("total value is unchanged — nothing was consumed in value terms")
+                .isEqualByComparingTo(before.valeurStocksGlobaleHt());
+        assertThat(k.valeurStocksDepotHt())
+                .isEqualByComparingTo(before.valeurStocksDepotHt().subtract(new BigDecimal("3000.00")));
+        assertThat(k.valeurStocksEnTravauxHt())
+                .isEqualByComparingTo(before.valeurStocksEnTravauxHt().add(new BigDecimal("3000.00")));
+        assertThat(k.valeurStocksDepotHt().add(k.valeurStocksEnTravauxHt()))
+                .isEqualByComparingTo(k.valeurStocksGlobaleHt());
+    }
+
+    /** Material already posé cannot be posé again. */
+    @Test
+    void affectingMoreThanIsAvailableIsRefused() {
+        UUID articleId = newArticle();
+        stockService.createMouvement(new CreateMouvementStockRequest(
+                articleId, null, TypeMouvement.ENTREE, new BigDecimal("10"), null, null));
+
+        stockService.affecterAuxTravaux(
+                new AffecterTravauxRequest(articleId, null, new BigDecimal("10"), null));
+
+        assertThatThrownBy(() -> stockService.affecterAuxTravaux(
+                new AffecterTravauxRequest(articleId, null, new BigDecimal("1"), null)))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("insuffisante");
+    }
+
+    /** Affecting works on a chantier's stock too, not just the dépôt. */
+    @Test
+    void affectingWorksAtAChantierLocation() {
+        UUID articleId = newArticle();
+        UUID chantierId = newChantier();
+
+        stockService.createMouvement(new CreateMouvementStockRequest(
+                articleId, chantierId, TypeMouvement.ENTREE, new BigDecimal("50"), null, null));
+
+        StockArticleResponse after = stockService.affecterAuxTravaux(
+                new AffecterTravauxRequest(articleId, chantierId, new BigDecimal("20"), null));
+
+        assertThat(after.emplacement()).isEqualTo("CHANTIER");
+        assertThat(after.quantiteTheorique()).isEqualByComparingTo("30");
+        assertThat(after.quantiteTravaux()).isEqualByComparingTo("20");
     }
 
     // ── Fixtures ──────────────────────────────────────────────────────

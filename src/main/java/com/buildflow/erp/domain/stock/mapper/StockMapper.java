@@ -8,6 +8,7 @@ import org.mapstruct.Mapping;
 @Mapper(componentModel = "spring")
 public interface StockMapper {
 
+    @Mapping(target = "articleId", source = "article.id")
     @Mapping(target = "articleCode", source = "article.code")
     @Mapping(target = "designation", source = "article.designation")
     @Mapping(target = "unite", source = "article.unite")

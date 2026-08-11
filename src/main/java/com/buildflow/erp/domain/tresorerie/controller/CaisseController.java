@@ -53,6 +53,22 @@ public class CaisseController {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(response));
     }
 
+    public record AnnulerTransactionRequest(String motif) {}
+
+    /**
+     * Cancels a cash movement that should not have happened. The balance is put
+     * back by a reversing entry; the original row is kept and marked cancelled.
+     */
+    @PatchMapping("/{id}/transactions/{transactionId}/annuler")
+    @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE')")
+    public ResponseEntity<ApiResponse<CaisseTransactionResponse>> annulerTransaction(
+            @PathVariable UUID id,
+            @PathVariable UUID transactionId,
+            @RequestBody(required = false) AnnulerTransactionRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(tresorerieService.annulerTransaction(
+                id, transactionId, request == null ? null : request.motif())));
+    }
+
     /** Toggles the two operational billing indicators on an existing cash operation. */
     @PatchMapping("/{id}/transactions/{transactionId}/indicateurs")
     @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE')")

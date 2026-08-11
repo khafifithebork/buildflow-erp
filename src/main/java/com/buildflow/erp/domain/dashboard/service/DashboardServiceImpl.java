@@ -59,10 +59,12 @@ public class DashboardServiceImpl implements DashboardService {
                 BigDecimal.valueOf(stockArticleRepository.sumValeurStockHt()));
         // Same valuation split by location, so the dashboard's Dépôts /
         // En Travaux figures are computed rather than hardcoded to zero.
+        // Dépôts = still available, En Travaux = already posé. The split is by
+        // availability, not by location, and the two always sum to the total.
         BigDecimal valeurStocksDepotHt = round(
-                BigDecimal.valueOf(stockArticleRepository.sumValeurStockDepotHt()));
+                BigDecimal.valueOf(stockArticleRepository.sumValeurStockDispoHt()));
         BigDecimal valeurStocksEnTravauxHt = round(
-                BigDecimal.valueOf(stockArticleRepository.sumValeurStockEnTravauxHt()));
+                BigDecimal.valueOf(stockArticleRepository.sumValeurStockTravauxHt()));
 
         // ── Flow KPIs (scoped to `month`, or all-time when absent) ───
         BigDecimal decaissementsCaisseTtc = round(caisseTransactionRepository.sumDebitsBetween(dtStart, dtEnd));

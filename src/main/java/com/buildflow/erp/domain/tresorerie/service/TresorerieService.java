@@ -22,6 +22,16 @@ public interface TresorerieService {
 
     List<CaisseTransactionResponse> getTransactions(UUID caisseId);
 
+    /**
+     * Cancels a cash movement that should not have happened — a mistyped
+     * amount, a duplicate, a payment that never cleared.
+     *
+     * <p>The balance is put back, but the original movement is not deleted: a
+     * reversing entry is posted against it instead, so the ledger still shows
+     * what was recorded and what corrected it. Cancelling twice is refused.
+     */
+    CaisseTransactionResponse annulerTransaction(UUID caisseId, UUID transactionId, String motif);
+
     /** Toggles the two operational billing indicators on an existing cash operation. */
     CaisseTransactionResponse updateTransactionIndicateurs(
             UUID caisseId, UUID transactionId, UpdateIndicateursRequest request);

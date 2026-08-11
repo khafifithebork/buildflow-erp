@@ -119,6 +119,41 @@ public class StockServiceImpl implements StockService {
         return stockMapper.toResponse(savedStock);
     }
 
+    @Override
+    @Transactional
+    public StockArticleResponse affecterAuxTravaux(
+            com.buildflow.erp.domain.stock.dto.request.AffecterTravauxRequest request) {
+
+        Article article = articleRepository.findById(request.articleId())
+                .orElseThrow(() -> new ResourceNotFoundException("Article", request.articleId()));
+        Chantier emplacement = resolveChantier(request.chantierId());
+
+        StockArticle stock = (emplacement == null
+                ? stockArticleRepository.findByArticleIdAndChantierIsNull(article.getId())
+                : stockArticleRepository.findByArticleIdAndChantierId(article.getId(), emplacement.getId()))
+                .orElseThrow(() -> new BusinessRuleException(
+                        "Aucun stock de '" + article.getDesignation() + "' à "
+                                + emplacementLabel(emplacement) + "."));
+
+        // Only what is still available can be posé — material already
+        // incorporated cannot be incorporated twice.
+        retirer(stock, request.quantite());
+        stock.setQuantiteTravaux(stock.getQuantiteTravaux().add(request.quantite()));
+        StockArticle saved = stockArticleRepository.save(stock);
+
+        // Recorded as a SORTIE: the quantity has left available stock. The
+        // total value of stock is unchanged — it moved between the two columns.
+        enregistrerMouvement(saved, TypeMouvement.SORTIE, request.quantite(),
+                request.documentRef() != null && !request.documentRef().isBlank()
+                        ? request.documentRef()
+                        : "Affectation aux travaux");
+
+        log.info("Affectation aux travaux : {} {} à {}", request.quantite(),
+                article.getDesignation(), emplacementLabel(emplacement));
+
+        return stockMapper.toResponse(saved);
+    }
+
     /**
      * Moves quantity between two locations — dépôt to chantier, chantier to
      * dépôt, or between two chantiers. Previously rejected outright, which is
