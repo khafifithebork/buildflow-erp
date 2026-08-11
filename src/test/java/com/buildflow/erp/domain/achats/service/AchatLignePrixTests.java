@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -50,6 +51,7 @@ class AchatLignePrixTests {
     @Autowired CategorieArticleRepository categorieArticleRepository;
     @Autowired com.buildflow.erp.domain.tresorerie.repository.CaisseRepository caisseRepository;
     @Autowired com.buildflow.erp.domain.tresorerie.service.TresorerieService tresorerieService;
+    @Autowired com.buildflow.erp.domain.tresorerie.repository.CaisseTransactionRepository caisseTransactionRepository;
 
     private static final AtomicInteger SEQ = new AtomicInteger();
 
@@ -250,6 +252,70 @@ class AchatLignePrixTests {
 
         assertThat(caisseRepository.findById(caisseId).orElseThrow().getSolde())
                 .isEqualByComparingTo("0.00");
+    }
+
+    /**
+     * Regression: the caisse balance being right is not enough. The
+     * décaissements KPI summed DEBIT rows only, so the refund posted when a
+     * settled order was re-priced down never came off the total — an order
+     * paid 1200 and refunded 600 still reported 1200 of spend.
+     *
+     * Asserted on the repository the KPI reads, in both directions, because a
+     * delta of zero can hide an absolute figure that is wrong.
+     */
+    @Test
+    void decaissementsFollowTheCashAfterAReprice() {
+        AchatResponse achat = createAchat(10, 100.00);        // 1200 TTC
+        UUID chantierId = chantierIdOf(achat);
+        UUID caisseId = caisseRepository.findByChantierId(chantierId).getFirst().getId();
+
+        tresorerieService.enregistrerTransaction(caisseId, new CreateTransactionRequest(
+                TypeTransaction.CREDIT, new BigDecimal("10000.00"), "Appro", null, null, null, null));
+
+        LocalDateTime from = LocalDateTime.now().minusDays(1);
+        LocalDateTime to = LocalDateTime.now().plusDays(1);
+        BigDecimal avant = caisseTransactionRepository.sumDebitsBetween(from, to);
+
+        achatService.validateBL(achat.id(), "BL");
+        achatService.validateFacture(achat.id(), "FA");
+        achatService.validatePaiement(achat.id(), ModePaiement.CAISSE);
+
+        assertThat(caisseTransactionRepository.sumDebitsBetween(from, to).subtract(avant))
+                .as("the 1200 paid")
+                .isEqualByComparingTo("1200.00");
+
+        // Down to 600 TTC: 600 comes back, so only 600 net has left.
+        achatService.updateLignePrix(
+                achat.id(), achat.lignes().getFirst().id(), new UpdateLignePrixRequest(50.00));
+        assertThat(caisseTransactionRepository.sumDebitsBetween(from, to).subtract(avant))
+                .as("net after the refund")
+                .isEqualByComparingTo("600.00");
+
+        // Up to 1800 TTC: 1200 more leaves, so 1800 net.
+        achatService.updateLignePrix(
+                achat.id(), achat.lignes().getFirst().id(), new UpdateLignePrixRequest(150.00));
+        assertThat(caisseTransactionRepository.sumDebitsBetween(from, to).subtract(avant))
+                .as("net after the increase")
+                .isEqualByComparingTo("1800.00");
+    }
+
+    /** Funding the caisse is money in, and must never reduce décaissements. */
+    @Test
+    void anOrdinaryCreditIsNotNettedOutOfDecaissements() {
+        AchatResponse achat = createAchat(10, 100.00);
+        UUID caisseId = caisseRepository.findByChantierId(chantierIdOf(achat)).getFirst().getId();
+
+        LocalDateTime from = LocalDateTime.now().minusDays(1);
+        LocalDateTime to = LocalDateTime.now().plusDays(1);
+        BigDecimal avant = caisseTransactionRepository.sumDebitsBetween(from, to);
+
+        tresorerieService.enregistrerTransaction(caisseId, new CreateTransactionRequest(
+                TypeTransaction.CREDIT, new BigDecimal("10000.00"), "Approvisionnement",
+                null, null, null, null));
+
+        assertThat(caisseTransactionRepository.sumDebitsBetween(from, to))
+                .as("a plain credit leaves décaissements alone")
+                .isEqualByComparingTo(avant);
     }
 
     /** The ref is server-assigned now, and follows the ACH-<year>-NNN shape. */

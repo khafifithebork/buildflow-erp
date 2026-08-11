@@ -23,18 +23,32 @@ public interface CaisseTransactionRepository extends JpaRepository<CaisseTransac
             """)
     BigDecimal sumMontantTtcByBpuLigneId(@Param("bpuLigneId") UUID bpuLigneId);
 
+    // Net cash out, not gross debits. A correcting credit — the refund posted
+    // when a settled order is re-priced down — has to come back off the total,
+    // or an order paid 1200 and refunded 600 still reports 1200 of spend.
+    // Ordinary credits are excluded rather than subtracted: funding the caisse
+    // is money coming in, not negative spend.
     @Query("""
-            SELECT COALESCE(SUM(t.montant), 0) FROM CaisseTransaction t
-            WHERE t.typeTransaction = com.buildflow.erp.domain.tresorerie.entity.TypeTransaction.DEBIT
+            SELECT COALESCE(SUM(
+                CASE WHEN t.typeTransaction = com.buildflow.erp.domain.tresorerie.entity.TypeTransaction.DEBIT
+                     THEN t.montant ELSE -t.montant END), 0)
+            FROM CaisseTransaction t
+            WHERE (t.typeTransaction = com.buildflow.erp.domain.tresorerie.entity.TypeTransaction.DEBIT
+                   OR t.ajustement = true)
             AND t.createdAt BETWEEN :start AND :end
             """)
     BigDecimal sumDebitsBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
     // Cash outflows that count towards the hors-fiscalité result: same rule as
     // achats — served the site, and no official invoice to declare.
+    // Same netting as above, restricted to the effet-chantier operations.
     @Query("""
-            SELECT COALESCE(SUM(t.montant), 0) FROM CaisseTransaction t
-            WHERE t.typeTransaction = com.buildflow.erp.domain.tresorerie.entity.TypeTransaction.DEBIT
+            SELECT COALESCE(SUM(
+                CASE WHEN t.typeTransaction = com.buildflow.erp.domain.tresorerie.entity.TypeTransaction.DEBIT
+                     THEN t.montant ELSE -t.montant END), 0)
+            FROM CaisseTransaction t
+            WHERE (t.typeTransaction = com.buildflow.erp.domain.tresorerie.entity.TypeTransaction.DEBIT
+                   OR t.ajustement = true)
             AND t.impactAnalytiqueChantier = true
             AND t.impactComptableFiscal = false
             AND t.createdAt BETWEEN :start AND :end
