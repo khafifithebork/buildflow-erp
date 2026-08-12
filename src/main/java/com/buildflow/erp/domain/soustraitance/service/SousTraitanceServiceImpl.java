@@ -1,5 +1,6 @@
 package com.buildflow.erp.domain.soustraitance.service;
 
+import com.buildflow.erp.common.fiscal.Tva;
 import com.buildflow.erp.common.code.CodeGenerator;
 import com.buildflow.erp.common.paiement.ModePaiement;
 import com.buildflow.erp.common.paiement.ModePaiementAudit;
@@ -56,7 +57,6 @@ public class SousTraitanceServiceImpl implements SousTraitanceService {
     private final CodeGenerator codeGenerator;
     private final ModePaiementAudit modePaiementAudit;
 
-    private static final BigDecimal TVA_RATE = new BigDecimal("0.20");
 
     // ── Contrats ───────────────────────────────────────────────────
 
@@ -76,7 +76,7 @@ public class SousTraitanceServiceImpl implements SousTraitanceService {
         contrat.setObjet(request.objet());
         contrat.setMontantHt(request.montantHt());
 
-        BigDecimal tva = request.montantHt().multiply(TVA_RATE).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal tva = Tva.sur(request.montantHt());
         contrat.setTva(tva);
         contrat.setMontantTtc(request.montantHt().add(tva));
 

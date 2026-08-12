@@ -1,5 +1,6 @@
 package com.buildflow.erp.domain.achats.service;
 
+import com.buildflow.erp.common.fiscal.Tva;
 import com.buildflow.erp.common.code.CodeGenerator;
 import com.buildflow.erp.common.paiement.ModePaiement;
 import com.buildflow.erp.common.paiement.ModePaiementAudit;
@@ -51,7 +52,6 @@ public class AchatServiceImpl implements AchatService {
     private final TresorerieService tresorerieService;
     private final ModePaiementAudit modePaiementAudit;
 
-    private static final BigDecimal TVA_RATE = new BigDecimal("0.20"); // 20% Moroccan TVA
 
     @Override
     @Transactional
@@ -102,7 +102,7 @@ public class AchatServiceImpl implements AchatService {
             achat.getLignes().add(ligne);
         }
 
-        BigDecimal tva = totalHt.multiply(TVA_RATE).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal tva = Tva.sur(totalHt);
         BigDecimal ttc = totalHt.add(tva);
 
         achat.setHt(totalHt);
@@ -388,7 +388,7 @@ public class AchatServiceImpl implements AchatService {
                 .map(LigneAchat::getTotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        BigDecimal tva = totalHt.multiply(TVA_RATE).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal tva = Tva.sur(totalHt);
 
         achat.setHt(totalHt);
         achat.setTva(tva);

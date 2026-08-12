@@ -1,5 +1,6 @@
 package com.buildflow.erp.domain.attachement.service;
 
+import com.buildflow.erp.common.fiscal.Tva;
 import com.buildflow.erp.common.code.CodeGenerator;
 import com.buildflow.erp.common.code.CodeSequence;
 import com.buildflow.erp.common.exception.BusinessRuleException;
@@ -37,7 +38,6 @@ public class AttachementServiceImpl implements AttachementService {
     private final ChantierRepository chantierRepository;
     private final CodeGenerator codeGenerator;
 
-    private static final BigDecimal TVA_RATE = new BigDecimal("0.20");
 
     @Override
     @Transactional
@@ -94,7 +94,7 @@ public class AttachementServiceImpl implements AttachementService {
             montantHt = montantHt.add(ligneMontantHt);
         }
 
-        BigDecimal tva = montantHt.multiply(TVA_RATE).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal tva = Tva.sur(montantHt);
         attachement.setMontantHt(montantHt);
         attachement.setTva(tva);
         attachement.setMontantTtc(montantHt.add(tva));

@@ -59,22 +59,22 @@ class AchatLignePrixTests {
 
     @Test
     void repricingALineRecomputesTheLineTotalAndTheOrderTotals() {
-        // 2 × 100 = 200 HT, +20% TVA = 240 TTC
+        // 2 × 100 = 200 HT, +10% TVA = 220 TTC
         AchatResponse achat = createAchat(2, 100.00);
         assertThat(achat.ht()).isEqualByComparingTo("200.00");
-        assertThat(achat.ttc()).isEqualByComparingTo("240.00");
+        assertThat(achat.ttc()).isEqualByComparingTo("220.00");
 
         UUID ligneId = achat.lignes().getFirst().id();
 
-        // Re-price to 250 → 2 × 250 = 500 HT, TVA 100, TTC 600
+        // Re-price to 250 → 2 × 250 = 500 HT, TVA 50, TTC 550
         AchatResponse updated = achatService.updateLignePrix(
                 achat.id(), ligneId, new UpdateLignePrixRequest(250.00)).achat();
 
         assertThat(updated.lignes().getFirst().prixUnitaire()).isEqualTo(250.00);
         assertThat(updated.lignes().getFirst().total()).isEqualByComparingTo("500.00");
         assertThat(updated.ht()).isEqualByComparingTo("500.00");
-        assertThat(updated.tva()).isEqualByComparingTo("100.00");
-        assertThat(updated.ttc()).isEqualByComparingTo("600.00");
+        assertThat(updated.tva()).isEqualByComparingTo("50.00");
+        assertThat(updated.ttc()).isEqualByComparingTo("550.00");
     }
 
     @Test
@@ -157,7 +157,7 @@ class AchatLignePrixTests {
 
         assertThat(achat.lignes().getFirst().total()).isEqualByComparingTo("30.02");
         assertThat(achat.ht()).isEqualByComparingTo("30.02");
-        assertThat(achat.ttc()).isEqualByComparingTo("36.02");
+        assertThat(achat.ttc()).isEqualByComparingTo("33.02");
     }
 
     /** Re-pricing accepts sub-centime values too. */
@@ -197,7 +197,7 @@ class AchatLignePrixTests {
      */
     @Test
     void repricingAPaidOrderReconcilesTheCaisse() {
-        AchatResponse achat = createAchat(10, 100.00);   // 1000 HT / 1200 TTC
+        AchatResponse achat = createAchat(10, 100.00);   // 1000 HT / 1100 TTC
         UUID chantierId = chantierIdOf(achat);
         UUID caisseId = caisseRepository.findByChantierId(chantierId).getFirst().getId();
 
@@ -209,14 +209,14 @@ class AchatLignePrixTests {
         achatService.validatePaiement(achat.id(), ModePaiement.CAISSE);
 
         BigDecimal soldeApresPaiement = caisseRepository.findById(caisseId).orElseThrow().getSolde();
-        assertThat(soldeApresPaiement).isEqualByComparingTo("3800.00");   // 5000 - 1200
+        assertThat(soldeApresPaiement).isEqualByComparingTo("3900.00");   // 5000 - 1100
 
-        // Halve the price: the order drops to 600 TTC, so 600 comes back.
+        // Halve the price: the order drops to 550 TTC, so 550 comes back.
         achatService.updateLignePrix(
                 achat.id(), achat.lignes().getFirst().id(), new UpdateLignePrixRequest(50.00));
 
         assertThat(caisseRepository.findById(caisseId).orElseThrow().getSolde())
-                .isEqualByComparingTo("4400.00");                          // 5000 - 600
+                .isEqualByComparingTo("4450.00");                          // 5000 - 550
     }
 
     /** Raising the price on a settled order takes the extra out of the caisse. */
@@ -234,9 +234,9 @@ class AchatLignePrixTests {
         achatService.updateLignePrix(
                 achat.id(), achat.lignes().getFirst().id(), new UpdateLignePrixRequest(150.00));
 
-        // 10 x 150 = 1500 HT -> 1800 TTC, so 600 more leaves the caisse.
+        // 10 x 150 = 1500 HT -> 1650 TTC, so 550 more leaves the caisse.
         assertThat(caisseRepository.findById(caisseId).orElseThrow().getSolde())
-                .isEqualByComparingTo("3200.00");                          // 5000 - 1800
+                .isEqualByComparingTo("3350.00");                          // 5000 - 1650
     }
 
     /** A virement never touched the caisse, so re-pricing must not either. */
@@ -267,7 +267,7 @@ class AchatLignePrixTests {
      */
     @Test
     void decaissementsFollowTheCashAfterAReprice() {
-        AchatResponse achat = createAchat(10, 100.00);        // 1200 TTC
+        AchatResponse achat = createAchat(10, 100.00);        // 1100 TTC
         UUID chantierId = chantierIdOf(achat);
         UUID caisseId = caisseRepository.findByChantierId(chantierId).getFirst().getId();
 
@@ -283,22 +283,22 @@ class AchatLignePrixTests {
         achatService.validatePaiement(achat.id(), ModePaiement.CAISSE);
 
         assertThat(caisseTransactionRepository.sumDebitsBetween(from, to).subtract(avant))
-                .as("the 1200 paid")
-                .isEqualByComparingTo("1200.00");
+                .as("the 1100 paid")
+                .isEqualByComparingTo("1100.00");
 
-        // Down to 600 TTC: 600 comes back, so only 600 net has left.
+        // Down to 550 TTC: 550 comes back, so only 550 net has left.
         achatService.updateLignePrix(
                 achat.id(), achat.lignes().getFirst().id(), new UpdateLignePrixRequest(50.00));
         assertThat(caisseTransactionRepository.sumDebitsBetween(from, to).subtract(avant))
                 .as("net after the refund")
-                .isEqualByComparingTo("600.00");
+                .isEqualByComparingTo("550.00");
 
-        // Up to 1800 TTC: 1200 more leaves, so 1800 net.
+        // Up to 1650 TTC: 1100 more leaves, so 1650 net.
         achatService.updateLignePrix(
                 achat.id(), achat.lignes().getFirst().id(), new UpdateLignePrixRequest(150.00));
         assertThat(caisseTransactionRepository.sumDebitsBetween(from, to).subtract(avant))
                 .as("net after the increase")
-                .isEqualByComparingTo("1800.00");
+                .isEqualByComparingTo("1650.00");
     }
 
     /** Funding the caisse is money in, and must never reduce décaissements. */
@@ -533,7 +533,7 @@ class AchatLignePrixTests {
                 achat.id(), new BigDecimal("1500.00")).achat();
 
         assertThat(updated.ht()).isEqualByComparingTo("1500.00");
-        assertThat(updated.ttc()).isEqualByComparingTo("1800.00");
+        assertThat(updated.ttc()).isEqualByComparingTo("1650.00");
         assertThat(updated.lignes().getFirst().prixUnitaire()).isEqualTo(150.0);
     }
 
@@ -556,8 +556,8 @@ class AchatLignePrixTests {
                 .as("stock follows the new price")
                 .isEqualByComparingTo("500.00");
         assertThat(caisseRepository.findById(caisseId).orElseThrow().getSolde())
-                .as("5000 - 1800 TTC")
-                .isEqualByComparingTo("3200.00");
+                .as("5000 - 1650 TTC")
+                .isEqualByComparingTo("3350.00");
     }
 
     /** With nothing to keep in proportion, say so rather than dividing by zero. */
