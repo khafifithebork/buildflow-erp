@@ -52,6 +52,7 @@ class AchatLignePrixTests {
     @Autowired com.buildflow.erp.domain.tresorerie.repository.CaisseRepository caisseRepository;
     @Autowired com.buildflow.erp.domain.tresorerie.service.TresorerieService tresorerieService;
     @Autowired com.buildflow.erp.domain.tresorerie.repository.CaisseTransactionRepository caisseTransactionRepository;
+    @Autowired com.buildflow.erp.domain.stock.repository.StockArticleRepository stockArticleRepository;
 
     private static final AtomicInteger SEQ = new AtomicInteger();
 
@@ -66,7 +67,7 @@ class AchatLignePrixTests {
 
         // Re-price to 250 → 2 × 250 = 500 HT, TVA 100, TTC 600
         AchatResponse updated = achatService.updateLignePrix(
-                achat.id(), ligneId, new UpdateLignePrixRequest(250.00));
+                achat.id(), ligneId, new UpdateLignePrixRequest(250.00)).achat();
 
         assertThat(updated.lignes().getFirst().prixUnitaire()).isEqualTo(250.00);
         assertThat(updated.lignes().getFirst().total()).isEqualByComparingTo("500.00");
@@ -93,7 +94,7 @@ class AchatLignePrixTests {
         UUID ligneId = achat.lignes().getFirst().id();
 
         AchatResponse updated = achatService.updateLignePrix(
-                achat.id(), ligneId, new UpdateLignePrixRequest(0.0));
+                achat.id(), ligneId, new UpdateLignePrixRequest(0.0)).achat();
 
         assertThat(updated.ht()).isEqualByComparingTo("0.00");
         assertThat(updated.tva()).isEqualByComparingTo("0.00");
@@ -115,17 +116,17 @@ class AchatLignePrixTests {
     /** Nothing downstream has happened yet at EN_COURS / LIVRE, so no warning. */
     @Test
     void noWarningBeforeInvoicing() {
-        assertThat(AchatServiceImpl.repricingWarning(AchatStatut.EN_COURS)).isNull();
-        assertThat(AchatServiceImpl.repricingWarning(AchatStatut.LIVRE)).isNull();
+        assertThat(AchatServiceImpl.repricingWarning(AchatStatut.EN_COURS, true)).isNull();
+        assertThat(AchatServiceImpl.repricingWarning(AchatStatut.LIVRE, true)).isNull();
     }
 
     /** Invoiced or paid, re-pricing leaves something out of step — say so. */
     @Test
     void warningOnceInvoicedOrPaid() {
-        assertThat(AchatServiceImpl.repricingWarning(AchatStatut.FACTURE))
+        assertThat(AchatServiceImpl.repricingWarning(AchatStatut.FACTURE, true))
                 .isNotNull()
                 .contains("facture");
-        assertThat(AchatServiceImpl.repricingWarning(AchatStatut.PAYE))
+        assertThat(AchatServiceImpl.repricingWarning(AchatStatut.PAYE, true))
                 .isNotNull()
                 .contains("caisse");
     }
@@ -165,7 +166,7 @@ class AchatLignePrixTests {
         UUID ligneId = achat.lignes().getFirst().id();
 
         AchatResponse updated = achatService.updateLignePrix(
-                achat.id(), ligneId, new UpdateLignePrixRequest(0.3333));
+                achat.id(), ligneId, new UpdateLignePrixRequest(0.3333)).achat();
 
         assertThat(updated.lignes().getFirst().prixUnitaire()).isEqualTo(0.3333);
         // 200 × 0.3333 = 66.66
@@ -325,6 +326,140 @@ class AchatLignePrixTests {
         assertThat(achat.ref()).matches("^ACH-\\d{4}-\\d{3,}$");
     }
 
+    // ── Stock valuation ───────────────────────────────────────────────
+
+    /**
+     * Regression, the écart users were reporting: re-pricing a commande whose
+     * goods had already arrived moved every cash figure but left the stock
+     * valued at the old price, so the marge nette dropped by qté × Δprix — 500
+     * on ten units re-priced from 100 to 150 — with nothing to explain it.
+     */
+    @Test
+    void repricingAReceivedOrderRevaluesItsStock() {
+        AchatResponse achat = createAchat(10, 100.00);
+        achatService.validateBL(achat.id(), "BL");
+
+        BigDecimal apresReception = valeurStock();
+
+        achatService.updateLignePrix(
+                achat.id(), achat.lignes().getFirst().id(), new UpdateLignePrixRequest(150.00));
+
+        assertThat(valeurStock().subtract(apresReception))
+                .as("10 units re-priced by +50 are worth 500 more")
+                .isEqualByComparingTo("500.00");
+    }
+
+    /** And down again, symmetrically. */
+    @Test
+    void repricingDownwardRevaluesStockDownward() {
+        AchatResponse achat = createAchat(10, 100.00);
+        achatService.validateBL(achat.id(), "BL");
+        BigDecimal apresReception = valeurStock();
+
+        achatService.updateLignePrix(
+                achat.id(), achat.lignes().getFirst().id(), new UpdateLignePrixRequest(60.00));
+
+        assertThat(valeurStock().subtract(apresReception)).isEqualByComparingTo("-400.00");
+    }
+
+    /** Nothing has been received yet, so there is nothing to re-value. */
+    @Test
+    void repricingBeforeReceiptLeavesStockAlone() {
+        AchatResponse achat = createAchat(10, 100.00);
+        BigDecimal avant = valeurStock();
+
+        achatService.updateLignePrix(
+                achat.id(), achat.lignes().getFirst().id(), new UpdateLignePrixRequest(150.00));
+
+        assertThat(valeurStock()).isEqualByComparingTo(avant);
+    }
+
+    /**
+     * Stock is worth what was paid for it. The article's reference price is a
+     * catalogue figure — an order placed above or below it must not be valued
+     * at the catalogue.
+     */
+    @Test
+    void stockIsValuedAtWhatWasPaidNotAtTheArticleReference() {
+        BigDecimal avant = valeurStock();
+        // list price 100, this order pays 120
+        AchatResponse achat = createAchat(10, 120.00, 100.00);
+        achatService.validateBL(achat.id(), "BL");
+
+        assertThat(valeurStock().subtract(avant)).isEqualByComparingTo("1200.00");
+    }
+
+    // ── Re-pricing a whole commande ───────────────────────────────────
+
+    /** The order total is set directly; the lines keep their proportions. */
+    @Test
+    void theWholeOrderCanBeRepricedToANewTotal() {
+        AchatResponse achat = createAchat(10, 100.00);          // 1000 HT
+
+        AchatResponse updated = achatService.updateMontantHt(
+                achat.id(), new BigDecimal("1500.00")).achat();
+
+        assertThat(updated.ht()).isEqualByComparingTo("1500.00");
+        assertThat(updated.ttc()).isEqualByComparingTo("1800.00");
+        assertThat(updated.lignes().getFirst().prixUnitaire()).isEqualTo(150.0);
+    }
+
+    /** Re-pricing the order carries the same corrections a line re-price does. */
+    @Test
+    void repricingTheWholeOrderRevaluesStockAndReconcilesTheCaisse() {
+        AchatResponse achat = createAchat(10, 100.00);
+        UUID caisseId = caisseRepository.findByChantierId(chantierIdOf(achat)).getFirst().getId();
+        tresorerieService.enregistrerTransaction(caisseId, new CreateTransactionRequest(
+                TypeTransaction.CREDIT, new BigDecimal("5000.00"), "Appro", null, null, null, null));
+
+        achatService.validateBL(achat.id(), "BL");
+        achatService.validateFacture(achat.id(), "FA");
+        achatService.validatePaiement(achat.id(), ModePaiement.CAISSE);
+        BigDecimal stockApresPaiement = valeurStock();
+
+        achatService.updateMontantHt(achat.id(), new BigDecimal("1500.00"));
+
+        assertThat(valeurStock().subtract(stockApresPaiement))
+                .as("stock follows the new price")
+                .isEqualByComparingTo("500.00");
+        assertThat(caisseRepository.findById(caisseId).orElseThrow().getSolde())
+                .as("5000 - 1800 TTC")
+                .isEqualByComparingTo("3200.00");
+    }
+
+    /** With nothing to keep in proportion, say so rather than dividing by zero. */
+    @Test
+    void anOrderAtZeroCannotBeRepricedByTotal() {
+        AchatResponse achat = createAchat(10, 0.00);
+
+        assertThatThrownBy(() -> achatService.updateMontantHt(achat.id(), new BigDecimal("1000.00")))
+                .hasMessageContaining("ligne par ligne");
+    }
+
+    /** A negative total is not a price. */
+    @Test
+    void anOrderTotalCannotBeNegative() {
+        AchatResponse achat = createAchat(10, 100.00);
+
+        assertThatThrownBy(() -> achatService.updateMontantHt(achat.id(), new BigDecimal("-1.00")))
+                .hasMessageContaining("positif");
+    }
+
+    /** The user is told when the correction had nowhere to land. */
+    @Test
+    void aWarningIsRaisedWhenTheStockIsGone() {
+        assertThat(AchatServiceImpl.repricingWarning(AchatStatut.LIVRE, false))
+                .contains("plus en stock");
+        assertThat(AchatServiceImpl.repricingWarning(AchatStatut.PAYE, false))
+                .contains("caisse")
+                .contains("plus en stock");
+    }
+
+    private BigDecimal valeurStock() {
+        return BigDecimal.valueOf(stockArticleRepository.sumValeurStockHt())
+                .setScale(2, java.math.RoundingMode.HALF_UP);
+    }
+
     private UUID chantierIdOf(AchatResponse achat) {
         return chantierService.findAll().stream()
                 .filter(c -> c.nom().equals(achat.chantierNom()))
@@ -334,6 +469,11 @@ class AchatLignePrixTests {
     // ── Fixtures ──────────────────────────────────────────────────────
 
     private AchatResponse createAchat(double quantite, double prixUnitaire) {
+        return createAchat(quantite, prixUnitaire, prixUnitaire);
+    }
+
+    /** prixAchatRef is the article's catalogue price; prixUnitaire is what this order pays. */
+    private AchatResponse createAchat(double quantite, double prixUnitaire, double prixAchatRef) {
         String suffix = "IT-" + SEQ.incrementAndGet() + "-" + UUID.randomUUID().toString().substring(0, 8);
 
         UUID chantierId = chantierService.create(new CreateChantierRequest(
@@ -361,7 +501,7 @@ class AchatLignePrixTests {
         article.setDesignation("Article de test");
         article.setCategorie(categorie);
         article.setUnite("U");
-        article.setPrixAchatRef(prixUnitaire);
+        article.setPrixAchatRef(prixAchatRef);
         article.setTvaRate(new BigDecimal("20.00"));
         article = articleRepository.save(article);
 

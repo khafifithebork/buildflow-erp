@@ -201,21 +201,16 @@ public class AchatServiceImpl implements AchatService {
      * Re-prices one line of a purchase order and rolls the change up into the
      * order's HT / TVA / TTC.
      *
-     * <p>Allowed at every statut, by product decision. Two consequences the
-     * caller has to live with, and which {@link #repricingWarning} surfaces
-     * rather than hiding:
-     * <ul>
-     *   <li>at {@code FACTURE}, the recorded invoice total no longer matches
-     *       the order;</li>
-     *   <li>at {@code PAYE}, the caisse was already debited for the old TTC, so
-     *       the cash ledger is now short or over by the difference and needs a
-     *       manual adjusting entry.</li>
-     * </ul>
-     * Stock is unaffected — provisioning keys off quantity, not price.
+     * <p>Allowed at every statut, by product decision. What that leaves out of
+     * step is corrected rather than hidden: goods already received are re-valued
+     * in stock, and an order already settled from the caisse gets an adjusting
+     * entry for the difference. {@link #repricingWarning} says what remains for
+     * the user to deal with — an invoice that no longer matches, or stock the
+     * correction could not reach.
      */
     @Override
     @Transactional
-    public AchatResponse updateLignePrix(UUID achatId, UUID ligneId, UpdateLignePrixRequest request) {
+    public RepricingResult updateLignePrix(UUID achatId, UUID ligneId, UpdateLignePrixRequest request) {
         Achat achat = findEntityById(achatId);
 
         LigneAchat ligne = achat.getLignes().stream()
@@ -224,12 +219,98 @@ public class AchatServiceImpl implements AchatService {
                 .orElseThrow(() -> new ResourceNotFoundException("LigneAchat", ligneId));
 
         BigDecimal ttcAvant = achat.getTtc();
+        double prixAvant = ligne.getPrixUnitaire();
 
-        ligne.setPrixUnitaire(request.prixUnitaire());
+        appliquerPrix(ligne, request.prixUnitaire());
+        boolean stockRevalorise = revaloriserStock(achat, ligne, prixAvant, request.prixUnitaire());
+
+        return finaliserRepricing(achat, ttcAvant, stockRevalorise);
+    }
+
+    /**
+     * Re-prices a whole order to a new total HT — the case where a supplier
+     * renegotiates the order rather than one article of it.
+     *
+     * <p>The new total is spread over the lines in the proportions they already
+     * have, so their relative weight is preserved and the line prices stay the
+     * figures everything downstream is computed from. Rounding is absorbed by
+     * the last line, so the lines always add up to exactly what was asked for.
+     */
+    @Override
+    @Transactional
+    public RepricingResult updateMontantHt(UUID achatId, BigDecimal montantHt) {
+        if (montantHt == null || montantHt.signum() < 0) {
+            throw new BusinessRuleException("Le montant HT doit être positif.");
+        }
+
+        Achat achat = findEntityById(achatId);
+        List<LigneAchat> lignes = achat.getLignes();
+        if (lignes.isEmpty()) {
+            throw new BusinessRuleException("Cette commande n'a aucune ligne à re-tarifer.");
+        }
+
+        BigDecimal htAvant = achat.getHt();
+        if (htAvant == null || htAvant.signum() == 0) {
+            throw new BusinessRuleException(
+                    "Cette commande est à 0 DH : il n'y a pas de répartition à conserver. "
+                            + "Modifiez le prix ligne par ligne.");
+        }
+
+        BigDecimal ttcAvant = achat.getTtc();
+        BigDecimal cible = montantHt.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal cumul = BigDecimal.ZERO;
+        boolean stockRevalorise = true;
+
+        for (int i = 0; i < lignes.size(); i++) {
+            LigneAchat ligne = lignes.get(i);
+            // The last line takes whatever is left, so the parts sum to the
+            // target exactly instead of drifting by a centime per line.
+            BigDecimal totalLigne = i == lignes.size() - 1
+                    ? cible.subtract(cumul)
+                    : cible.multiply(ligne.getTotal()).divide(htAvant, 2, RoundingMode.HALF_UP);
+            cumul = cumul.add(totalLigne);
+
+            double prixAvant = ligne.getPrixUnitaire();
+            double prixApres = totalLigne
+                    .divide(BigDecimal.valueOf(ligne.getQuantite()), 6, RoundingMode.HALF_UP)
+                    .doubleValue();
+
+            appliquerPrix(ligne, prixApres);
+            stockRevalorise &= revaloriserStock(achat, ligne, prixAvant, prixApres);
+        }
+
+        return finaliserRepricing(achat, ttcAvant, stockRevalorise);
+    }
+
+    /** Sets a line's unit price and its total, which is derived from it. */
+    private static void appliquerPrix(LigneAchat ligne, double prixUnitaire) {
+        ligne.setPrixUnitaire(prixUnitaire);
         ligne.setTotal(BigDecimal.valueOf(ligne.getQuantite())
-                .multiply(BigDecimal.valueOf(request.prixUnitaire()))
+                .multiply(BigDecimal.valueOf(prixUnitaire))
                 .setScale(2, RoundingMode.HALF_UP));
+    }
 
+    /**
+     * Goods received are already sitting in stock at the price they came in on.
+     * Re-pricing the order without re-valuing them leaves the stock short by the
+     * difference, and the marge nette reads that shortfall as a loss that never
+     * happened — the écart of qté × Δprix users were reporting.
+     *
+     * @return false when the correction had nowhere to land
+     */
+    private boolean revaloriserStock(Achat achat, LigneAchat ligne, double prixAvant, double prixApres) {
+        if (achat.getStatut() == AchatStatut.EN_COURS || Double.compare(prixAvant, prixApres) == 0) {
+            return true;   // nothing received yet, or nothing changed
+        }
+        return stockService.revaloriser(
+                ligne.getArticle().getId(),
+                achat.getChantier().getId(),
+                BigDecimal.valueOf(ligne.getQuantite()).setScale(3, RoundingMode.HALF_UP),
+                prixApres - prixAvant);
+    }
+
+    /** Rolls the new line prices up, reconciles the caisse, and saves. */
+    private RepricingResult finaliserRepricing(Achat achat, BigDecimal ttcAvant, boolean stockRevalorise) {
         recomputeTotals(achat);
 
         // An order already settled from the caisse has moved real money. Leaving
@@ -247,21 +328,32 @@ public class AchatServiceImpl implements AchatService {
                     achat.isImpactComptableFiscal());
         }
 
-        return achatMapper.toResponse(achatRepository.save(achat));
+        Achat saved = achatRepository.save(achat);
+        return new RepricingResult(achatMapper.toResponse(saved),
+                repricingWarning(saved.getStatut(), stockRevalorise));
     }
 
     /**
      * Message warning that re-pricing has left something downstream out of step,
-     * or {@code null} when nothing downstream has happened yet.
+     * or {@code null} when nothing needs saying.
      */
-    public static String repricingWarning(AchatStatut statut) {
-        return switch (statut) {
+    public static String repricingWarning(AchatStatut statut, boolean stockRevalorise) {
+        String surStatut = switch (statut) {
             case EN_COURS, LIVRE -> null;
             case FACTURE -> "Prix mis à jour. La facture déjà enregistrée pour cette commande "
                     + "ne correspond plus au nouveau montant : vérifiez-la.";
-            case PAYE -> "Prix mis à jour. Cette commande était déjà payée : la caisse a été débitée "
-                    + "de l'ancien montant TTC. Enregistrez une opération d'ajustement pour la différence.";
+            // The adjusting entry is posted automatically; say so rather than
+            // asking for a correction that has already happened.
+            case PAYE -> "Prix mis à jour. Cette commande était déjà payée : la différence a été "
+                    + "passée en écriture d'ajustement sur la caisse du chantier.";
         };
+
+        if (stockRevalorise) {
+            return surStatut;
+        }
+        String surStock = "La marchandise reçue sur cette commande n'est plus en stock : "
+                + "sa valeur n'a pas pu être corrigée.";
+        return surStatut == null ? "Prix mis à jour. " + surStock : surStatut + " " + surStock;
     }
 
     /** Recomputes HT / TVA / TTC from the order's lines. */

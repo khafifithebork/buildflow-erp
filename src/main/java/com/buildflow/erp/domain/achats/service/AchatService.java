@@ -17,6 +17,19 @@ public interface AchatService {
     AchatResponse validatePaiement(UUID id, ModePaiement modePaiement);
     AchatResponse updateIndicateurs(UUID id, UpdateIndicateursRequest request);
 
+    /**
+     * A re-priced order, together with anything the change left out of step —
+     * an invoice that no longer matches, stock that could not be re-valued.
+     * Null warning means nothing needs saying.
+     */
+    record RepricingResult(AchatResponse achat, String warning) {}
+
     /** Re-prices one order line and rolls the change up into the order totals. */
-    AchatResponse updateLignePrix(UUID achatId, UUID ligneId, UpdateLignePrixRequest request);
+    RepricingResult updateLignePrix(UUID achatId, UUID ligneId, UpdateLignePrixRequest request);
+
+    /**
+     * Re-prices a whole order so it comes to {@code montantHt}, keeping its
+     * lines in the proportions they already have.
+     */
+    RepricingResult updateMontantHt(UUID achatId, java.math.BigDecimal montantHt);
 }

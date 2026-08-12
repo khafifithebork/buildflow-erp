@@ -21,5 +21,7 @@ public interface StockMapper {
     @Mapping(target = "emplacement",
             expression = "java(stockArticle.getChantier() == null ? \"DEPOT\" : \"CHANTIER\")")
     @Mapping(target = "enAlerte", expression = "java(stockArticle.getQuantiteTheorique().compareTo(stockArticle.getSeuilAlerte()) <= 0 && stockArticle.getSeuilAlerte().compareTo(java.math.BigDecimal.ZERO) > 0)")
+    @Mapping(target = "valeurHt",
+            expression = "java(stockArticle.quantiteTotale().multiply(java.math.BigDecimal.valueOf(stockArticle.getCoutUnitaire())).setScale(2, java.math.RoundingMode.HALF_UP))")
     StockArticleResponse toResponse(StockArticle stockArticle);
 }

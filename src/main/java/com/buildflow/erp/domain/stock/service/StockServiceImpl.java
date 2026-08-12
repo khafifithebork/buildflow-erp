@@ -61,6 +61,10 @@ public class StockServiceImpl implements StockService {
             // rounded on the way in rather than silently truncated.
             BigDecimal quantiteEnStock = BigDecimal.valueOf(ligne.getQuantite())
                     .setScale(3, RoundingMode.HALF_UP);
+            // What this delivery cost is folded into the line's average before
+            // the quantity lands, so the stock is valued at the price actually
+            // paid rather than at the article's reference price.
+            stock.integrerArrivage(quantiteEnStock, ligne.getPrixUnitaire());
             stock.setQuantiteTheorique(stock.getQuantiteTheorique().add(quantiteEnStock));
             stockArticleRepository.save(stock);
 
@@ -108,7 +112,15 @@ public class StockServiceImpl implements StockService {
         StockArticle stock = findOrCreateStock(article, source);
 
         switch (request.typeMouvement()) {
-            case ENTREE, AJUSTEMENT -> stock.setQuantiteTheorique(stock.getQuantiteTheorique().add(request.quantite()));
+            // A hand-entered arrival carries no price of its own, so it comes in
+            // at whatever the line already costs — or, on a line receiving its
+            // first goods, at the article's reference price.
+            case ENTREE, AJUSTEMENT -> {
+                stock.integrerArrivage(request.quantite(), stock.quantiteTotale().signum() > 0
+                        ? stock.getCoutUnitaire()
+                        : article.getPrixAchatRef());
+                stock.setQuantiteTheorique(stock.getQuantiteTheorique().add(request.quantite()));
+            }
             case SORTIE -> retirer(stock, request.quantite());
             case TRANSFERT -> throw new IllegalStateException("handled above");
         }
@@ -182,10 +194,15 @@ public class StockServiceImpl implements StockService {
                 .orElseThrow(() -> new BusinessRuleException(
                         "Aucun stock de '" + article.getDesignation() + "' à " + emplacementLabel(source) + "."));
 
+        // The quantity travels at the cost it was carrying, so moving material
+        // between two locations leaves the total value of stock alone. The
+        // source keeps its own average: what leaves is priced at it.
+        double coutTransfere = from.getCoutUnitaire();
         retirer(from, request.quantite());
         StockArticle savedFrom = stockArticleRepository.save(from);
 
         StockArticle to = findOrCreateStock(article, destination);
+        to.integrerArrivage(request.quantite(), coutTransfere);
         to.setQuantiteTheorique(to.getQuantiteTheorique().add(request.quantite()));
         StockArticle savedTo = stockArticleRepository.save(to);
 
@@ -200,6 +217,30 @@ public class StockServiceImpl implements StockService {
                 emplacementLabel(source), emplacementLabel(destination));
 
         return stockMapper.toResponse(savedTo);
+    }
+
+    @Override
+    @Transactional
+    public boolean revaloriser(UUID articleId, UUID chantierId, BigDecimal quantite, double deltaPrix) {
+        java.util.Optional<StockArticle> ligne = chantierId == null
+                ? stockArticleRepository.findByArticleIdAndChantierIsNull(articleId)
+                : stockArticleRepository.findByArticleIdAndChantierId(articleId, chantierId);
+
+        if (ligne.isEmpty()) {
+            return false;
+        }
+
+        // The correction is the whole value difference on what was received. It
+        // is spread over what is still held, which is the best that can be done
+        // once part of the delivery has been consumed or moved on.
+        StockArticle stock = ligne.get();
+        boolean applique = stock.corrigerValeur(quantite.multiply(BigDecimal.valueOf(deltaPrix)));
+        if (applique) {
+            stockArticleRepository.save(stock);
+            log.info("Revalorisation stock article {} : {} x {} = {}",
+                    articleId, quantite, deltaPrix, quantite.doubleValue() * deltaPrix);
+        }
+        return applique;
     }
 
     private Chantier resolveChantier(UUID chantierId) {

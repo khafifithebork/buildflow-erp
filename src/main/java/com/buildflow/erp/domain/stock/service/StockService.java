@@ -21,4 +21,17 @@ public interface StockService {
      */
     StockArticleResponse affecterAuxTravaux(
             com.buildflow.erp.domain.stock.dto.request.AffecterTravauxRequest request);
+
+    /**
+     * Re-values material already received, when the order it came in on is
+     * re-priced. Without this the stock keeps the old price and the marge nette
+     * carries the difference as a loss that never happened.
+     *
+     * @param quantite  what was received on that line
+     * @param deltaPrix the change in unit price
+     * @return false when nothing is held any more, so the correction had
+     *         nowhere to land — the caller reports that to the user
+     */
+    boolean revaloriser(java.util.UUID articleId, java.util.UUID chantierId,
+                        java.math.BigDecimal quantite, double deltaPrix);
 }
