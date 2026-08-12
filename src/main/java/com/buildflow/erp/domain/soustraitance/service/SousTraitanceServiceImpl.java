@@ -255,8 +255,10 @@ public class SousTraitanceServiceImpl implements SousTraitanceService {
         // CROSS-DOMAIN SIDE EFFECT: only cash settles out of the caisse. A
         // virement, cheque or effet clears through the bank.
         if (modePaiement == ModePaiement.CAISSE) {
-            tresorerieService.debiterPourAchat(
+            tresorerieService.debiterPourDocument(
                     contrat.getChantier().getId(),
+                    TypeDocumentPaiement.PAIEMENT_SOUS_TRAITANT,
+                    paiement.getId(),
                     paiement.getMontant(),
                     "ST-" + paiement.getReference(),
                     // Subcontractor payments carry no purchase-level indicators yet;

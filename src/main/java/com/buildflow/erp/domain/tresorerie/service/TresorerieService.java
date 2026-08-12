@@ -37,14 +37,21 @@ public interface TresorerieService {
             UUID caisseId, UUID transactionId, UpdateIndicateursRequest request);
 
     /**
-     * Cross-domain method: called by AchatServiceImpl when an Achat transitions to PAYE.
-     * Debits the caisse associated with the achat's chantier.
+     * Débite la caisse d'un chantier pour régler un document — une commande,
+     * un paiement de sous-traitant.
      *
-     * <p>The generated debit IS the cash side of that achat, so it inherits the
-     * achat's two billing indicators rather than defaulting them to false.
+     * <p>L'écriture produite EST la face trésorerie de ce document : elle en
+     * hérite les deux indicateurs, et elle en porte l'identifiant, ce qui la
+     * rend dérivée. Une écriture dérivée ne s'annule pas seule, seulement avec
+     * son document.
+     *
+     * <p>S'appelait {@code debiterPourAchat}, ce que la sous-traitance
+     * appelait déjà pour ses propres règlements — le nom mentait sur ce que la
+     * méthode faisait, et le typage du document rendait l'ambiguïté nuisible.
      */
-    void debiterPourAchat(UUID chantierId, BigDecimal montant, String achatRef,
-                          boolean impactAnalytiqueChantier, boolean impactComptableFiscal);
+    void debiterPourDocument(UUID chantierId, com.buildflow.erp.common.paiement.TypeDocumentPaiement typeDocument,
+                             UUID documentId, BigDecimal montant, String reference,
+                             boolean impactAnalytiqueChantier, boolean impactComptableFiscal);
 
     /**
      * Corrects the caisse after a settled achat's amount changed.
@@ -54,7 +61,7 @@ public interface TresorerieService {
      * paid order leaves the ledger showing the amount that was actually paid
      * while every derived figure reads the new one.
      */
-    void ajusterPourAchat(UUID chantierId, BigDecimal delta, String achatRef,
+    void ajusterPourAchat(UUID chantierId, UUID achatId, BigDecimal delta, String achatRef,
                           boolean impactAnalytiqueChantier, boolean impactComptableFiscal);
 
     /**
@@ -62,4 +69,16 @@ public interface TresorerieService {
      * with modePaiement=CAISSE. Debits the caisse associated with the fiche's chantier.
      */
     void debiterPourSalaire(UUID chantierId, BigDecimal montant, String reference);
+
+    /**
+     * Contre-passe toutes les écritures encore vivantes d'un document — son
+     * règlement et les ajustements qui ont suivi.
+     *
+     * <p>Appelé par le domaine propriétaire du document, jamais par la caisse
+     * elle-même : c'est le document qui décide qu'il n'est plus payé, la caisse
+     * ne fait qu'en tirer les conséquences.
+     *
+     * @return le montant net rendu à la caisse
+     */
+    BigDecimal annulerEcrituresDuDocument(UUID documentId, String motif);
 }

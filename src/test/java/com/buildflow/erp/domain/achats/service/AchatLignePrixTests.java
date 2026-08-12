@@ -4,6 +4,8 @@ import com.buildflow.erp.common.exception.ResourceNotFoundException;
 import com.buildflow.erp.common.paiement.ModePaiement;
 import com.buildflow.erp.domain.tresorerie.dto.request.CreateTransactionRequest;
 import com.buildflow.erp.domain.tresorerie.entity.TypeTransaction;
+import com.buildflow.erp.domain.achats.repository.AchatRepository;
+import com.buildflow.erp.domain.tresorerie.entity.CaisseTransaction;
 import com.buildflow.erp.domain.achats.dto.request.CreateAchatRequest;
 import com.buildflow.erp.domain.achats.dto.request.CreateLigneAchatRequest;
 import com.buildflow.erp.domain.achats.dto.request.UpdateLignePrixRequest;
@@ -54,6 +56,7 @@ class AchatLignePrixTests {
     @Autowired com.buildflow.erp.domain.tresorerie.repository.CaisseTransactionRepository caisseTransactionRepository;
     @Autowired com.buildflow.erp.domain.stock.repository.StockArticleRepository stockArticleRepository;
     @Autowired com.buildflow.erp.domain.stock.service.StockService stockService;
+    @Autowired AchatRepository achatRepository;
 
     private static final AtomicInteger SEQ = new AtomicInteger();
 
@@ -325,6 +328,149 @@ class AchatLignePrixTests {
     void createdOrderGetsAGeneratedRef() {
         AchatResponse achat = createAchat(1, 1.00);
         assertThat(achat.ref()).matches("^ACH-\\d{4}-\\d{3,}$");
+    }
+
+    // ── Annulation d'un paiement ──────────────────────────────────────
+
+    /**
+     * Régression : contre-passer l'écriture de règlement depuis la caisse
+     * rendait l'argent en laissant la commande PAYE. La dette ne réapparaissait
+     * pas et le décaissement disparaissait — la commande devenait gratuite au
+     * bilan. Une écriture qui règle un document ne s'annule plus seule.
+     */
+    @Test
+    void uneEcritureDeReglementNeSAnnulePasDepuisLaCaisse() {
+        AchatResponse achat = createAchat(10, 100.00);
+        UUID caisseId = approvisionner(achat, "5000.00");
+        payerParCaisse(achat);
+
+        CaisseTransaction reglement = ecritureDeReglement(caisseId, achat);
+
+        assertThatThrownBy(() ->
+                tresorerieService.annulerTransaction(caisseId, reglement.getId(), "erreur"))
+                .hasMessageContaining("depuis la commande");
+    }
+
+    /** Le bon chemin défait les deux faces : le statut et l'argent. */
+    @Test
+    void annulerLePaiementRendLArgentEtRemetLaCommandeEnDette() {
+        AchatResponse achat = createAchat(10, 100.00);       // 1000 HT / 1100 TTC
+        UUID caisseId = approvisionner(achat, "5000.00");
+        payerParCaisse(achat);
+
+        assertThat(caisseRepository.findById(caisseId).orElseThrow().getSolde())
+                .isEqualByComparingTo("3900.00");
+        BigDecimal detteQuandPayee = achatRepository.sumHtNonPayees();
+
+        AchatResponse annule = achatService.annulerPaiement(achat.id(), "saisie par erreur");
+
+        assertThat(annule.status()).isEqualTo(AchatStatut.FACTURE);
+        assertThat(annule.modePaiement()).isNull();
+        assertThat(caisseRepository.findById(caisseId).orElseThrow().getSolde())
+                .as("les 1100 sont revenus")
+                .isEqualByComparingTo("5000.00");
+        assertThat(achatRepository.sumHtNonPayees().subtract(detteQuandPayee))
+                .as("la dette fournisseur réapparaît")
+                .isEqualByComparingTo("1000.00");
+    }
+
+    /** Et les décaissements retombent à zéro net, pas seulement le solde. */
+    @Test
+    void annulerLePaiementSortLaCommandeDesDecaissements() {
+        AchatResponse achat = createAchat(10, 100.00);
+        approvisionner(achat, "5000.00");
+        LocalDateTime from = LocalDateTime.now().minusDays(1);
+        LocalDateTime to = LocalDateTime.now().plusDays(1);
+        BigDecimal avant = caisseTransactionRepository.sumDebitsBetween(from, to);
+
+        payerParCaisse(achat);
+        achatService.annulerPaiement(achat.id(), "erreur");
+
+        assertThat(caisseTransactionRepository.sumDebitsBetween(from, to))
+                .isEqualByComparingTo(avant);
+    }
+
+    /**
+     * Un changement de prix après le règlement laisse une écriture d'ajustement.
+     * Elle appartient au même document et doit partir avec lui, sinon la caisse
+     * garde la différence.
+     */
+    @Test
+    void annulerLePaiementEmporteAussiLesAjustements() {
+        AchatResponse achat = createAchat(10, 100.00);
+        UUID caisseId = approvisionner(achat, "5000.00");
+        payerParCaisse(achat);
+
+        // re-tarifé à la hausse : 550 de plus sortent de la caisse
+        achatService.updateLignePrix(
+                achat.id(), achat.lignes().getFirst().id(), new UpdateLignePrixRequest(150.00));
+        assertThat(caisseRepository.findById(caisseId).orElseThrow().getSolde())
+                .isEqualByComparingTo("3350.00");
+
+        achatService.annulerPaiement(achat.id(), "erreur");
+
+        assertThat(caisseRepository.findById(caisseId).orElseThrow().getSolde())
+                .as("règlement et ajustement rendus tous les deux")
+                .isEqualByComparingTo("5000.00");
+    }
+
+    /** Un virement ne sort pas de la caisse, son annulation n'y rentre pas non plus. */
+    @Test
+    void annulerUnPaiementParVirementLaisseLaCaisseTranquille() {
+        AchatResponse achat = createAchat(10, 100.00);
+        UUID caisseId = approvisionner(achat, "5000.00");
+        achatService.validateBL(achat.id(), "BL");
+        achatService.validateFacture(achat.id(), "FA");
+        achatService.validatePaiement(achat.id(), ModePaiement.VIREMENT);
+
+        achatService.annulerPaiement(achat.id(), "erreur");
+
+        assertThat(achatService.findById(achat.id()).status()).isEqualTo(AchatStatut.FACTURE);
+        assertThat(caisseRepository.findById(caisseId).orElseThrow().getSolde())
+                .isEqualByComparingTo("5000.00");
+    }
+
+    /** Rien à annuler sur une commande qui n'a jamais été réglée. */
+    @Test
+    void onNAnnulePasLePaiementDUneCommandeNonPayee() {
+        AchatResponse achat = createAchat(10, 100.00);
+
+        assertThatThrownBy(() -> achatService.annulerPaiement(achat.id(), "erreur"))
+                .hasMessageContaining("pas payée");
+    }
+
+    /** Annulée puis re-réglée : le cycle se referme proprement. */
+    @Test
+    void uneCommandeAnnuleePeutEtreRepayee() {
+        AchatResponse achat = createAchat(10, 100.00);
+        UUID caisseId = approvisionner(achat, "5000.00");
+        payerParCaisse(achat);
+        achatService.annulerPaiement(achat.id(), "erreur");
+
+        AchatResponse repayee = achatService.validatePaiement(achat.id(), ModePaiement.CAISSE);
+
+        assertThat(repayee.status()).isEqualTo(AchatStatut.PAYE);
+        assertThat(caisseRepository.findById(caisseId).orElseThrow().getSolde())
+                .isEqualByComparingTo("3900.00");
+    }
+
+    private UUID approvisionner(AchatResponse achat, String montant) {
+        UUID caisseId = caisseRepository.findByChantierId(chantierIdOf(achat)).getFirst().getId();
+        tresorerieService.enregistrerTransaction(caisseId, new CreateTransactionRequest(
+                TypeTransaction.CREDIT, new BigDecimal(montant), "Appro", null, null, null, null));
+        return caisseId;
+    }
+
+    private void payerParCaisse(AchatResponse achat) {
+        achatService.validateBL(achat.id(), "BL");
+        achatService.validateFacture(achat.id(), "FA");
+        achatService.validatePaiement(achat.id(), ModePaiement.CAISSE);
+    }
+
+    private CaisseTransaction ecritureDeReglement(UUID caisseId, AchatResponse achat) {
+        return caisseTransactionRepository.findByCaisseIdOrderByCreatedAtDesc(caisseId).stream()
+                .filter(t -> achat.ref().equals(t.getReferenceDocument()) && !t.isAjustement())
+                .findFirst().orElseThrow();
     }
 
     // ── Stock valuation ───────────────────────────────────────────────

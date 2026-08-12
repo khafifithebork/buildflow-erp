@@ -173,9 +173,50 @@ public class AchatServiceImpl implements AchatService {
         // virement, cheque or effet clears through the bank and must leave the
         // chantier's cash balance untouched.
         if (modePaiement == ModePaiement.CAISSE) {
-            tresorerieService.debiterPourAchat(
-                    achat.getChantier().getId(), achat.getTtc(), achat.getRef(),
+            tresorerieService.debiterPourDocument(
+                    achat.getChantier().getId(), TypeDocumentPaiement.ACHAT,
+                    achat.getId(), achat.getTtc(), achat.getRef(),
                     achat.isImpactAnalytiqueChantier(), achat.isImpactComptableFiscal());
+        }
+
+        return achatMapper.toResponse(achatRepository.save(achat));
+    }
+
+    /**
+     * Défait un paiement enregistré à tort : la commande redevient une facture
+     * à régler, et la caisse récupère ce qui en était sorti.
+     *
+     * <p>C'est le seul chemin pour annuler le règlement d'une commande. Contre-
+     * passer l'écriture depuis la caisse ne suffit pas — l'argent reviendrait
+     * en laissant la commande payée, donc sans dette et sans décaissement : la
+     * commande deviendrait gratuite au bilan. Les deux faces se défont
+     * ensemble ou pas du tout, ce que la transaction garantit ici.
+     *
+     * <p>Le retour se fait à {@code FACTURE}, l'état d'où venait le paiement.
+     * La réception et le stock ne sont pas touchés : la marchandise est bien
+     * arrivée, c'est le règlement qui n'aurait pas dû être enregistré.
+     */
+    @Override
+    @Transactional
+    public AchatResponse annulerPaiement(UUID id, String motif) {
+        Achat achat = findEntityById(id);
+        if (achat.getStatut() != AchatStatut.PAYE) {
+            throw new BusinessRuleException(
+                    "Cette commande n'est pas payée : il n'y a pas de paiement à annuler.");
+        }
+
+        ModePaiement modeAnnule = achat.getModePaiement();
+        String raison = motif != null && !motif.isBlank() ? motif : "paiement annulé";
+
+        achat.setStatut(AchatStatut.FACTURE);
+        achat.setModePaiement(null);
+        modePaiementAudit.record(TypeDocumentPaiement.ACHAT, achat.getId(),
+                achat.getRef(), modeAnnule, null);
+
+        // Seul un règlement en espèces est sorti de la caisse ; un virement, un
+        // chèque ou un effet se dénoue à la banque et ne laisse rien à rendre ici.
+        if (modeAnnule == ModePaiement.CAISSE) {
+            tresorerieService.annulerEcrituresDuDocument(achat.getId(), raison);
         }
 
         return achatMapper.toResponse(achatRepository.save(achat));
@@ -342,6 +383,7 @@ public class AchatServiceImpl implements AchatService {
         if (achat.getStatut() == AchatStatut.PAYE && achat.getModePaiement() == ModePaiement.CAISSE) {
             tresorerieService.ajusterPourAchat(
                     achat.getChantier().getId(),
+                    achat.getId(),
                     achat.getTtc().subtract(ttcAvant),
                     achat.getRef(),
                     achat.isImpactAnalytiqueChantier(),

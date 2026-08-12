@@ -18,6 +18,13 @@ public interface AchatService {
     AchatResponse updateIndicateurs(UUID id, UpdateIndicateursRequest request);
 
     /**
+     * Défait un règlement enregistré à tort : la commande repasse à FACTURE et
+     * la caisse récupère ce qui en était sorti. Le seul chemin pour annuler le
+     * paiement d'une commande — la caisse ne peut pas le faire seule.
+     */
+    AchatResponse annulerPaiement(UUID id, String motif);
+
+    /**
      * How far a re-pricing reached the stock the order had delivered. Material
      * consumed before the correction left at the old price, and that cost
      * cannot be put back into stock — so the correction is not always whole,

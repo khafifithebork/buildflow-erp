@@ -111,6 +111,21 @@ public class AchatController {
                 : ApiResponse.success(result.achat(), result.warning()));
     }
 
+    public record AnnulerPaiementRequest(String motif) {}
+
+    /**
+     * Annule un règlement enregistré à tort. Passe par la commande, jamais par
+     * la caisse : l'écriture et le statut se défont ensemble.
+     */
+    @PatchMapping("/{id}/annuler-paiement")
+    @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE')")
+    public ResponseEntity<ApiResponse<AchatResponse>> annulerPaiement(
+            @PathVariable UUID id,
+            @RequestBody(required = false) AnnulerPaiementRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(achatService.annulerPaiement(
+                id, request == null ? null : request.motif())));
+    }
+
     @PatchMapping("/{id}/validate-paiement")
     @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE')")
     public ResponseEntity<ApiResponse<AchatResponse>> validatePaiement(

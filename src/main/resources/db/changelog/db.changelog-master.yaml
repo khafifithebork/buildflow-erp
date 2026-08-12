@@ -116,3 +116,6 @@ databaseChangeLog:
   - include:
       file: db/changelog/changes/039-add-cout-unitaire-to-stock.sql
       relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/040-link-caisse-transactions-to-documents.sql
+      relativeToChangelogFile: false
