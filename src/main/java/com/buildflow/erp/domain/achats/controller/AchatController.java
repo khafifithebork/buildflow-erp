@@ -7,14 +7,16 @@ import com.buildflow.erp.domain.achats.dto.request.CreateAchatRequest;
 import com.buildflow.erp.domain.achats.dto.response.AchatResponse;
 import com.buildflow.erp.domain.achats.dto.request.UpdateLignePrixRequest;
 import com.buildflow.erp.domain.achats.service.AchatService;
-import com.buildflow.erp.domain.achats.service.AchatServiceImpl;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
@@ -83,12 +85,45 @@ public class AchatController {
             @PathVariable UUID ligneId,
             @Valid @RequestBody UpdateLignePrixRequest request) {
 
-        AchatResponse response = achatService.updateLignePrix(id, ligneId, request);
-        String warning = AchatServiceImpl.repricingWarning(response.status());
+        return repricingResponse(achatService.updateLignePrix(id, ligneId, request));
+    }
 
-        return ResponseEntity.ok(warning == null
-                ? ApiResponse.success(response)
-                : ApiResponse.success(response, warning));
+    public record UpdateMontantRequest(@NotNull @PositiveOrZero BigDecimal montantHt) {}
+
+    /**
+     * Re-prices a whole order to a new total HT, for the case where a supplier
+     * renegotiates the commande rather than one article of it. The lines keep
+     * their proportions.
+     */
+    @PatchMapping("/{id}/montant")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ACHAT', 'FINANCE')")
+    public ResponseEntity<ApiResponse<AchatResponse>> updateMontant(
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateMontantRequest request) {
+
+        return repricingResponse(achatService.updateMontantHt(id, request.montantHt()));
+    }
+
+    private static ResponseEntity<ApiResponse<AchatResponse>> repricingResponse(
+            AchatService.RepricingResult result) {
+        return ResponseEntity.ok(result.warning() == null
+                ? ApiResponse.success(result.achat())
+                : ApiResponse.success(result.achat(), result.warning()));
+    }
+
+    public record AnnulerPaiementRequest(String motif) {}
+
+    /**
+     * Annule un règlement enregistré à tort. Passe par la commande, jamais par
+     * la caisse : l'écriture et le statut se défont ensemble.
+     */
+    @PatchMapping("/{id}/annuler-paiement")
+    @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE')")
+    public ResponseEntity<ApiResponse<AchatResponse>> annulerPaiement(
+            @PathVariable UUID id,
+            @RequestBody(required = false) AnnulerPaiementRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(achatService.annulerPaiement(
+                id, request == null ? null : request.motif())));
     }
 
     @PatchMapping("/{id}/validate-paiement")

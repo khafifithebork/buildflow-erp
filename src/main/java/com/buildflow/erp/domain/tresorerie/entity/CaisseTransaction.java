@@ -33,6 +33,26 @@ public class CaisseTransaction extends BaseEntity {
     @Column(name = "reference_document", length = 100)
     private String referenceDocument;
 
+    /**
+     * Le document que cette écriture règle, quand elle en règle un.
+     *
+     * <p>Null pour une opération autonome — un approvisionnement, une dépense
+     * saisie à la main. Renseigné, il dit que l'écriture est <em>dérivée</em> :
+     * elle ne s'annule pas pour elle-même, mais avec le document dont elle
+     * découle, sans quoi la caisse et le document divergent.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type_document", length = 30)
+    private com.buildflow.erp.common.paiement.TypeDocumentPaiement typeDocument;
+
+    @Column(name = "document_id")
+    private java.util.UUID documentId;
+
+    /** True quand cette écriture découle d'un document plutôt que d'une saisie directe. */
+    public boolean estDerivee() {
+        return documentId != null;
+    }
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "bpu_ligne_id")
     private BpuLigne bpuLigne;

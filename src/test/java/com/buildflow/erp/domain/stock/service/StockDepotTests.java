@@ -231,6 +231,99 @@ class StockDepotTests {
         assertThat(after.quantiteTravaux()).isEqualByComparingTo("20");
     }
 
+    // ── Écarts d'inventaire ───────────────────────────────────────────
+
+    /**
+     * Régression : la quantité était bornée au positif pour tous les types, si
+     * bien qu'un ajustement ne pouvait que monter. Un manquant devait être saisi
+     * en SORTIE, où il se mélangeait aux consommations réelles — la donnée
+     * « ce qui a réellement été posé » en sortait fausse.
+     */
+    @Test
+    void unAjustementConstateUnManquant() {
+        UUID articleId = newArticle();
+        UUID chantierId = newChantier();
+        stockService.createMouvement(new CreateMouvementStockRequest(
+                articleId, chantierId, TypeMouvement.ENTREE, new BigDecimal("10"), "BL", null));
+
+        // inventaire physique : 7 au lieu de 10, trois unités cassées
+        StockArticleResponse apres = stockService.createMouvement(new CreateMouvementStockRequest(
+                articleId, chantierId, TypeMouvement.AJUSTEMENT, new BigDecimal("-3"), "inventaire", null));
+
+        assertThat(apres.quantiteTheorique()).isEqualByComparingTo("7");
+    }
+
+    /** Et un excédent, dans l'autre sens. */
+    @Test
+    void unAjustementConstateUnExcedent() {
+        UUID articleId = newArticle();
+        UUID chantierId = newChantier();
+        stockService.createMouvement(new CreateMouvementStockRequest(
+                articleId, chantierId, TypeMouvement.ENTREE, new BigDecimal("10"), "BL", null));
+
+        StockArticleResponse apres = stockService.createMouvement(new CreateMouvementStockRequest(
+                articleId, chantierId, TypeMouvement.AJUSTEMENT, new BigDecimal("2"), "inventaire", null));
+
+        assertThat(apres.quantiteTheorique()).isEqualByComparingTo("12");
+    }
+
+    /**
+     * Un écart d'inventaire ne dit rien du prix payé : il constate une quantité.
+     * La marchandise restante vaut ce qu'elle a coûté, ni plus ni moins.
+     */
+    @Test
+    void unAjustementNeChangePasLeCoutUnitaire() {
+        UUID articleId = newArticle();
+        UUID chantierId = newChantier();
+        stockService.createMouvement(new CreateMouvementStockRequest(
+                articleId, chantierId, TypeMouvement.ENTREE, new BigDecimal("10"), "BL", null));
+        double coutAvant = ligne(articleId, chantierId).getCoutUnitaire();
+
+        stockService.createMouvement(new CreateMouvementStockRequest(
+                articleId, chantierId, TypeMouvement.AJUSTEMENT, new BigDecimal("-3"), "inventaire", null));
+
+        assertThat(ligne(articleId, chantierId).getCoutUnitaire()).isEqualTo(coutAvant);
+    }
+
+    /** On ne peut pas constater un manquant plus grand que ce qui est en stock. */
+    @Test
+    void unManquantNePeutPasDepasserLeStock() {
+        UUID articleId = newArticle();
+        UUID chantierId = newChantier();
+        stockService.createMouvement(new CreateMouvementStockRequest(
+                articleId, chantierId, TypeMouvement.ENTREE, new BigDecimal("10"), "BL", null));
+
+        assertThatThrownBy(() -> stockService.createMouvement(new CreateMouvementStockRequest(
+                articleId, chantierId, TypeMouvement.AJUSTEMENT, new BigDecimal("-40"), "inventaire", null)))
+                .hasMessageContaining("insuffisante");
+    }
+
+    /** Une sortie négative ne veut rien dire : le sens est déjà dans le type. */
+    @Test
+    void seulUnAjustementPeutEtreNegatif() {
+        UUID articleId = newArticle();
+        UUID chantierId = newChantier();
+
+        assertThatThrownBy(() -> stockService.createMouvement(new CreateMouvementStockRequest(
+                articleId, chantierId, TypeMouvement.SORTIE, new BigDecimal("-5"), "?", null)))
+                .hasMessageContaining("AJUSTEMENT");
+    }
+
+    /** Et un ajustement de zéro ne constate aucun écart. */
+    @Test
+    void unAjustementDeZeroEstRefuse() {
+        UUID articleId = newArticle();
+        UUID chantierId = newChantier();
+
+        assertThatThrownBy(() -> stockService.createMouvement(new CreateMouvementStockRequest(
+                articleId, chantierId, TypeMouvement.AJUSTEMENT, BigDecimal.ZERO, "inventaire", null)))
+                .hasMessageContaining("aucun écart");
+    }
+
+    private com.buildflow.erp.domain.stock.entity.StockArticle ligne(UUID articleId, UUID chantierId) {
+        return stockArticleRepository.findByArticleIdAndChantierId(articleId, chantierId).orElseThrow();
+    }
+
     // ── Fixtures ──────────────────────────────────────────────────────
 
     private UUID newArticle() {

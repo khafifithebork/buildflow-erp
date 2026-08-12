@@ -47,8 +47,12 @@ public class ModePaiementHistorique {
     @Column(name = "ancien_mode", length = 20)
     private ModePaiement ancienMode;
 
+    /**
+     * Null quand le règlement est annulé — le document n'a plus de mode. La
+     * symétrie de {@code ancienMode}, qui est null à la première affectation.
+     */
     @Enumerated(EnumType.STRING)
-    @Column(name = "nouveau_mode", nullable = false, length = 20)
+    @Column(name = "nouveau_mode", length = 20)
     private ModePaiement nouveauMode;
 
     /** Email of the user who made the change; null for system-driven changes. */

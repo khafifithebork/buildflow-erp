@@ -11,5 +11,7 @@ public record LigneAchatResponse(
         String unite,
         double prixUnitaire,
         BigDecimal total,
+        /** Le taux figé à la commande, en fraction (0.10 = 10 %). */
+        BigDecimal tvaRate,
         String bpuLigneRef
 ) {}

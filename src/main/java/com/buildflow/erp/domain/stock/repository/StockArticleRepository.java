@@ -25,30 +25,34 @@ public interface StockArticleRepository extends JpaRepository<StockArticle, UUID
     // versus what has been incorporated into the works. Location is a separate
     // axis, queried through findByChantierIsNull / findByChantierId.
     //
-    // Both return Double because prixAchatRef is DOUBLE PRECISION.
+    // Both return Double because coutUnitaire is DOUBLE PRECISION.
+    //
+    // Every valuation below multiplies by the line's own coutUnitaire — what
+    // the material actually cost — rather than the article's reference price,
+    // which never moves and left re-priced orders valued at the old figure.
 
     /** Still available anywhere — the dashboard's "Dépôts". */
     @Query("""
-            SELECT COALESCE(SUM(s.quantiteTheorique * s.article.prixAchatRef), 0) FROM StockArticle s
+            SELECT COALESCE(SUM(s.quantiteTheorique * s.coutUnitaire), 0) FROM StockArticle s
             """)
     Double sumValeurStockDispoHt();
 
     /** Incorporated into the works — the dashboard's "En Travaux". */
     @Query("""
-            SELECT COALESCE(SUM(s.quantiteTravaux * s.article.prixAchatRef), 0) FROM StockArticle s
+            SELECT COALESCE(SUM(s.quantiteTravaux * s.coutUnitaire), 0) FROM StockArticle s
             """)
     Double sumValeurStockTravauxHt();
 
     // ── By location, kept separate from the availability split ───────────
 
     @Query("""
-            SELECT COALESCE(SUM((s.quantiteTheorique + s.quantiteTravaux) * s.article.prixAchatRef), 0)
+            SELECT COALESCE(SUM((s.quantiteTheorique + s.quantiteTravaux) * s.coutUnitaire), 0)
             FROM StockArticle s WHERE s.chantier IS NULL
             """)
     Double sumValeurStockAuDepotHt();
 
     @Query("""
-            SELECT COALESCE(SUM((s.quantiteTheorique + s.quantiteTravaux) * s.article.prixAchatRef), 0)
+            SELECT COALESCE(SUM((s.quantiteTheorique + s.quantiteTravaux) * s.coutUnitaire), 0)
             FROM StockArticle s WHERE s.chantier IS NOT NULL
             """)
     Double sumValeurStockSurChantiersHt();
@@ -56,14 +60,14 @@ public interface StockArticleRepository extends JpaRepository<StockArticle, UUID
     // No Dépôts/En Travaux split yet — StockArticle isn't scoped beyond a
     // single chantier quantity (see doc gap 2.7), so this is one global total.
     //
-    // Returns Double, not BigDecimal: prixAchatRef is DOUBLE PRECISION, so the
+    // Returns Double, not BigDecimal: coutUnitaire is DOUBLE PRECISION, so the
     // product and its SUM come back as a float from the database. Callers round
     // it to two decimals before presenting it as money.
     // Total stock value: available plus posé. Affecting to the works moves
     // quantity between the two, so this total is unchanged by it — only the
     // split moves.
     @Query("""
-            SELECT COALESCE(SUM((s.quantiteTheorique + s.quantiteTravaux) * s.article.prixAchatRef), 0)
+            SELECT COALESCE(SUM((s.quantiteTheorique + s.quantiteTravaux) * s.coutUnitaire), 0)
             FROM StockArticle s
             """)
     Double sumValeurStockHt();

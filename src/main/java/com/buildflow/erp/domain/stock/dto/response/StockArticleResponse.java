@@ -21,5 +21,9 @@ public record StockArticleResponse(
         /** Incorporated into the works — "Stock Travaux (Posé)". */
         BigDecimal quantiteTravaux,
         BigDecimal seuilAlerte,
-        boolean enAlerte
+        boolean enAlerte,
+        /** What the material on this line cost, and what it is valued at. */
+        double coutUnitaire,
+        /** Its value: everything held here, at that cost. */
+        BigDecimal valeurHt
 ) {}

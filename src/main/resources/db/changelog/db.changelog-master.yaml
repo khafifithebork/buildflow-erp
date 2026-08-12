@@ -113,3 +113,12 @@ databaseChangeLog:
   - include:
       file: db/changelog/changes/038-add-quantite-travaux-to-stock.sql
       relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/039-add-cout-unitaire-to-stock.sql
+      relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/040-link-caisse-transactions-to-documents.sql
+      relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/041-add-tva-rate-to-lignes-achat.sql
+      relativeToChangelogFile: false

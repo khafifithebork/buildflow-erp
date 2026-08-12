@@ -61,6 +61,10 @@ public class StockServiceImpl implements StockService {
             // rounded on the way in rather than silently truncated.
             BigDecimal quantiteEnStock = BigDecimal.valueOf(ligne.getQuantite())
                     .setScale(3, RoundingMode.HALF_UP);
+            // What this delivery cost is folded into the line's average before
+            // the quantity lands, so the stock is valued at the price actually
+            // paid rather than at the article's reference price.
+            stock.integrerArrivage(quantiteEnStock, ligne.getPrixUnitaire());
             stock.setQuantiteTheorique(stock.getQuantiteTheorique().add(quantiteEnStock));
             stockArticleRepository.save(stock);
 
@@ -105,10 +109,24 @@ public class StockServiceImpl implements StockService {
             return transferer(article, source, request);
         }
 
+        assertQuantiteCoherente(request);
         StockArticle stock = findOrCreateStock(article, source);
 
         switch (request.typeMouvement()) {
-            case ENTREE, AJUSTEMENT -> stock.setQuantiteTheorique(stock.getQuantiteTheorique().add(request.quantite()));
+            // A hand-entered arrival carries no price of its own, so it comes in
+            // at whatever the line already costs — or, on a line receiving its
+            // first goods, at the article's reference price.
+            case ENTREE -> {
+                stock.integrerArrivage(request.quantite(), stock.quantiteTotale().signum() > 0
+                        ? stock.getCoutUnitaire()
+                        : article.getPrixAchatRef());
+                stock.setQuantiteTheorique(stock.getQuantiteTheorique().add(request.quantite()));
+            }
+            // Un écart d'inventaire aligne le théorique sur le physique. Il ne
+            // change pas ce que la marchandise a coûté : un excédent découvert
+            // vaut ce que vaut le reste de la ligne, un manquant emporte sa part
+            // au même prix. Le coût unitaire ne bouge donc pas.
+            case AJUSTEMENT -> ajuster(stock, request.quantite());
             case SORTIE -> retirer(stock, request.quantite());
             case TRANSFERT -> throw new IllegalStateException("handled above");
         }
@@ -182,10 +200,15 @@ public class StockServiceImpl implements StockService {
                 .orElseThrow(() -> new BusinessRuleException(
                         "Aucun stock de '" + article.getDesignation() + "' à " + emplacementLabel(source) + "."));
 
+        // The quantity travels at the cost it was carrying, so moving material
+        // between two locations leaves the total value of stock alone. The
+        // source keeps its own average: what leaves is priced at it.
+        double coutTransfere = from.getCoutUnitaire();
         retirer(from, request.quantite());
         StockArticle savedFrom = stockArticleRepository.save(from);
 
         StockArticle to = findOrCreateStock(article, destination);
+        to.integrerArrivage(request.quantite(), coutTransfere);
         to.setQuantiteTheorique(to.getQuantiteTheorique().add(request.quantite()));
         StockArticle savedTo = stockArticleRepository.save(to);
 
@@ -200,6 +223,27 @@ public class StockServiceImpl implements StockService {
                 emplacementLabel(source), emplacementLabel(destination));
 
         return stockMapper.toResponse(savedTo);
+    }
+
+    @Override
+    @Transactional
+    public BigDecimal revaloriser(UUID articleId, UUID chantierId, BigDecimal quantite, double deltaPrix) {
+        java.util.Optional<StockArticle> ligne = chantierId == null
+                ? stockArticleRepository.findByArticleIdAndChantierIsNull(articleId)
+                : stockArticleRepository.findByArticleIdAndChantierId(articleId, chantierId);
+
+        if (ligne.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+
+        StockArticle stock = ligne.get();
+        BigDecimal corrigee = stock.corrigerValeur(quantite, deltaPrix);
+        if (corrigee.signum() > 0) {
+            stockArticleRepository.save(stock);
+            log.info("Revalorisation article {} : {} unités sur {} livrées, {} par unité",
+                    articleId, corrigee, quantite, deltaPrix);
+        }
+        return corrigee;
     }
 
     private Chantier resolveChantier(UUID chantierId) {
@@ -221,6 +265,39 @@ public class StockServiceImpl implements StockService {
             created.setChantier(chantier);
             return created;
         });
+    }
+
+    /**
+     * Seul un ajustement peut être négatif : il constate un écart d'inventaire,
+     * qui va dans les deux sens. Une entrée, une sortie ou un transfert portent
+     * leur sens dans leur type — une « sortie de -3 » ne veut rien dire.
+     */
+    private static void assertQuantiteCoherente(CreateMouvementStockRequest request) {
+        if (request.typeMouvement() == TypeMouvement.AJUSTEMENT) {
+            if (request.quantite().signum() == 0) {
+                throw new BusinessRuleException("Un ajustement de zéro ne constate aucun écart.");
+            }
+            return;
+        }
+        if (request.quantite().signum() <= 0) {
+            throw new BusinessRuleException(
+                    "La quantité d'un mouvement " + request.typeMouvement()
+                            + " doit être positive. Pour constater un écart d'inventaire, "
+                            + "utilisez un AJUSTEMENT, qui accepte une quantité négative.");
+        }
+    }
+
+    /**
+     * Aligne le théorique sur le physique. Un manquant ne peut pas dépasser ce
+     * qui est disponible — le stock posé n'est plus en rayon, il n'y a rien à
+     * y reprendre.
+     */
+    private static void ajuster(StockArticle stock, BigDecimal ecart) {
+        if (ecart.signum() < 0) {
+            retirer(stock, ecart.negate());
+            return;
+        }
+        stock.setQuantiteTheorique(stock.getQuantiteTheorique().add(ecart));
     }
 
     private static void retirer(StockArticle stock, BigDecimal quantite) {

@@ -4,6 +4,7 @@ import com.buildflow.erp.common.entity.BaseEntity;
 import com.buildflow.erp.domain.bpu.entity.BpuLigne;
 import com.buildflow.erp.domain.referentiel.entity.Article;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.buildflow.erp.common.fiscal.Tva;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -44,6 +45,17 @@ public class LigneAchat extends BaseEntity {
 
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal total;
+
+    /**
+     * Le taux de TVA de l'article, figé au moment de la commande — instantané
+     * au même titre que la désignation et l'unité.
+     *
+     * <p>Figé et non relu chez l'article : une commande passée à 14 % reste à
+     * 14 % même si le référentiel change ensuite. Le taux qui a servi à
+     * facturer ne se réécrit pas rétroactivement.
+     */
+    @Column(name = "tva_rate", nullable = false, precision = 5, scale = 4)
+    private BigDecimal tvaRate = Tva.TAUX_PAR_DEFAUT;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "bpu_ligne_id")

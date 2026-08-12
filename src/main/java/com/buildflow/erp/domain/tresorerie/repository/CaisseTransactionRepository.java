@@ -11,6 +11,9 @@ import java.util.List;
 import java.util.UUID;
 
 public interface CaisseTransactionRepository extends JpaRepository<CaisseTransaction, UUID> {
+
+    /** Les écritures encore vivantes qui règlent un document donné. */
+    List<CaisseTransaction> findByDocumentIdAndAnnuleFalse(UUID documentId);
     List<CaisseTransaction> findByCaisseIdOrderByCreatedAtDesc(UUID caisseId);
 
     /** Cash operations booked against any caisse of a given chantier. */
