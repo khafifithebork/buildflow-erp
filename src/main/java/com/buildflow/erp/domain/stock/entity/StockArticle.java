@@ -80,21 +80,39 @@ public class StockArticle extends BaseEntity {
     }
 
     /**
-     * Spreads a value correction over what is still held — used when an order
-     * that has already been received is re-priced. With nothing left to
-     * revalue the correction has nowhere to go, which the caller reports.
+     * Corrects the price of a delivery already received — an order re-priced
+     * after the goods arrived.
      *
-     * @return true when the correction was applied
+     * <p>Only the units still held can be corrected, and there are never more
+     * of them than the delivery brought. Material already consumed left at the
+     * old price: that cost is spent and cannot be put back into stock. So the
+     * value moves by {@code min(livrée, détenue) × Δ}, not by the whole
+     * {@code livrée × Δ} — applying the full difference to a part-consumed line
+     * inflates what is left. Ten units received and five consumed, re-priced
+     * from 100 to 150, are worth 250 more, not 500.
+     *
+     * <p>Lots are not tracked, so which units are "the ones still held" is a
+     * choice; taking as many as the line still carries is the reading that
+     * keeps the total right in every case tested.
+     *
+     * @return how much of the delivery the correction reached — zero when none
+     *         of it is held any more, less than {@code quantiteLivree} when
+     *         only part is
      */
-    public boolean corrigerValeur(BigDecimal deltaValeur) {
+    public BigDecimal corrigerValeur(BigDecimal quantiteLivree, double deltaPrixUnitaire) {
         BigDecimal detenu = quantiteTotale();
         if (detenu.signum() <= 0) {
-            return false;
+            return BigDecimal.ZERO;
         }
-        coutUnitaire += deltaValeur.doubleValue() / detenu.doubleValue();
+
+        BigDecimal corrigee = detenu.min(quantiteLivree);
+        coutUnitaire += corrigee.doubleValue() * deltaPrixUnitaire / detenu.doubleValue();
+        // A floor, not a rounding: reachable only on a line whose average
+        // predates this column, since anything priced through integrerArrivage
+        // carries at least what this delivery contributed.
         if (coutUnitaire < 0) {
             coutUnitaire = 0d;
         }
-        return true;
+        return corrigee;
     }
 }

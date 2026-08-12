@@ -53,6 +53,7 @@ class AchatLignePrixTests {
     @Autowired com.buildflow.erp.domain.tresorerie.service.TresorerieService tresorerieService;
     @Autowired com.buildflow.erp.domain.tresorerie.repository.CaisseTransactionRepository caisseTransactionRepository;
     @Autowired com.buildflow.erp.domain.stock.repository.StockArticleRepository stockArticleRepository;
+    @Autowired com.buildflow.erp.domain.stock.service.StockService stockService;
 
     private static final AtomicInteger SEQ = new AtomicInteger();
 
@@ -116,17 +117,17 @@ class AchatLignePrixTests {
     /** Nothing downstream has happened yet at EN_COURS / LIVRE, so no warning. */
     @Test
     void noWarningBeforeInvoicing() {
-        assertThat(AchatServiceImpl.repricingWarning(AchatStatut.EN_COURS, true)).isNull();
-        assertThat(AchatServiceImpl.repricingWarning(AchatStatut.LIVRE, true)).isNull();
+        assertThat(AchatServiceImpl.repricingWarning(AchatStatut.EN_COURS, AchatService.Revalorisation.COMPLETE)).isNull();
+        assertThat(AchatServiceImpl.repricingWarning(AchatStatut.LIVRE, AchatService.Revalorisation.COMPLETE)).isNull();
     }
 
     /** Invoiced or paid, re-pricing leaves something out of step — say so. */
     @Test
     void warningOnceInvoicedOrPaid() {
-        assertThat(AchatServiceImpl.repricingWarning(AchatStatut.FACTURE, true))
+        assertThat(AchatServiceImpl.repricingWarning(AchatStatut.FACTURE, AchatService.Revalorisation.COMPLETE))
                 .isNotNull()
                 .contains("facture");
-        assertThat(AchatServiceImpl.repricingWarning(AchatStatut.PAYE, true))
+        assertThat(AchatServiceImpl.repricingWarning(AchatStatut.PAYE, AchatService.Revalorisation.COMPLETE))
                 .isNotNull()
                 .contains("caisse");
     }
@@ -389,6 +390,138 @@ class AchatLignePrixTests {
         assertThat(valeurStock().subtract(avant)).isEqualByComparingTo("1200.00");
     }
 
+    /**
+     * The correction reaches only the units still held. Ten received and five
+     * consumed, re-priced 100 → 150: the five left are worth 250 more. The five
+     * consumed went out at 100 and that cost is spent — putting the whole 500
+     * back would price the remainder at 200 a unit, which nobody paid.
+     */
+    @Test
+    void onlyTheUnitsStillHeldAreRevalued() {
+        AchatResponse achat = createAchat(10, 100.00);
+        achatService.validateBL(achat.id(), "BL");
+        consommer(achat, 5);
+
+        BigDecimal avant = valeurStock();
+        achatService.updateLignePrix(
+                achat.id(), achat.lignes().getFirst().id(), new UpdateLignePrixRequest(150.00));
+
+        assertThat(valeurStock().subtract(avant))
+                .as("5 units left, worth 50 more each")
+                .isEqualByComparingTo("250.00");
+    }
+
+    /** And the re-priced line is left at the price paid, not at an inflated one. */
+    @Test
+    void aPartlyConsumedLineKeepsAnHonestUnitCost() {
+        AchatResponse achat = createAchat(10, 100.00);
+        achatService.validateBL(achat.id(), "BL");
+        consommer(achat, 5);
+
+        achatService.updateLignePrix(
+                achat.id(), achat.lignes().getFirst().id(), new UpdateLignePrixRequest(150.00));
+
+        assertThat(ligneStock(achat).getCoutUnitaire())
+                .as("the 5 left cost 150 each, not 200")
+                .isEqualTo(150.0);
+    }
+
+    /**
+     * Downward, on a part-consumed line, is where the old arithmetic went
+     * negative and got clamped to zero — landing on a plausible number for the
+     * wrong reason. Five units re-priced 100 → 50 are worth 250 less, and the
+     * unit cost must be 50 rather than a floored 0.
+     */
+    @Test
+    void aPartlyConsumedLineIsNotClampedToZeroOnTheWayDown() {
+        AchatResponse achat = createAchat(10, 100.00);
+        achatService.validateBL(achat.id(), "BL");
+        consommer(achat, 5);
+
+        BigDecimal avant = valeurStock();
+        achatService.updateLignePrix(
+                achat.id(), achat.lignes().getFirst().id(), new UpdateLignePrixRequest(50.00));
+
+        assertThat(valeurStock().subtract(avant)).isEqualByComparingTo("-250.00");
+        assertThat(ligneStock(achat).getCoutUnitaire()).isEqualTo(50.0);
+    }
+
+    /** Consumed down to nothing, there is no stock left to carry a correction. */
+    @Test
+    void nothingIsRevaluedOnceTheDeliveryIsFullyConsumed() {
+        AchatResponse achat = createAchat(10, 100.00);
+        achatService.validateBL(achat.id(), "BL");
+        consommer(achat, 10);
+
+        BigDecimal avant = valeurStock();
+        var result = achatService.updateLignePrix(
+                achat.id(), achat.lignes().getFirst().id(), new UpdateLignePrixRequest(150.00));
+
+        assertThat(valeurStock()).isEqualByComparingTo(avant);
+        assertThat(result.warning()).contains("plus en stock");
+    }
+
+    /** A part-consumed correction is worth saying out loud. */
+    @Test
+    void aPartialRevaluationIsReported() {
+        AchatResponse achat = createAchat(10, 100.00);
+        achatService.validateBL(achat.id(), "BL");
+        consommer(achat, 5);
+
+        var result = achatService.updateLignePrix(
+                achat.id(), achat.lignes().getFirst().id(), new UpdateLignePrixRequest(150.00));
+
+        assertThat(result.warning()).contains("consommée");
+    }
+
+    /**
+     * A line holding more than this delivery brought — a second, dearer order
+     * of the same article — must be corrected for this delivery only, not
+     * spread thin across everything on the line.
+     */
+    @Test
+    void aSecondDeliveryOnTheSameLineIsNotRepricedByTheFirst() {
+        AchatResponse premier = createAchat(10, 100.00);
+        achatService.validateBL(premier.id(), "BL-1");
+        BigDecimal avant = valeurStock();
+
+        achatService.updateLignePrix(
+                premier.id(), premier.lignes().getFirst().id(), new UpdateLignePrixRequest(150.00));
+
+        // only the 10 units this order delivered move, by 50 each
+        assertThat(valeurStock().subtract(avant)).isEqualByComparingTo("500.00");
+    }
+
+    /** Re-pricing there and back leaves the valuation exactly where it started. */
+    @Test
+    void repricingThereAndBackIsANoOp() {
+        AchatResponse achat = createAchat(10, 100.00);
+        achatService.validateBL(achat.id(), "BL");
+        BigDecimal avant = valeurStock();
+
+        UUID ligneId = achat.lignes().getFirst().id();
+        achatService.updateLignePrix(achat.id(), ligneId, new UpdateLignePrixRequest(150.00));
+        achatService.updateLignePrix(achat.id(), ligneId, new UpdateLignePrixRequest(100.00));
+
+        assertThat(valeurStock()).isEqualByComparingTo(avant);
+    }
+
+    /** Material already posé is still on the balance sheet, so it follows too. */
+    @Test
+    void materialAlreadyPosedIsRevaluedWithTheRest() {
+        AchatResponse achat = createAchat(10, 100.00);
+        achatService.validateBL(achat.id(), "BL");
+        stockService.affecterAuxTravaux(
+                new com.buildflow.erp.domain.stock.dto.request.AffecterTravauxRequest(
+                        articleIdOf(achat), chantierIdOf(achat), new BigDecimal("10.000"), "pose"));
+
+        BigDecimal avant = valeurStock();
+        achatService.updateLignePrix(
+                achat.id(), achat.lignes().getFirst().id(), new UpdateLignePrixRequest(150.00));
+
+        assertThat(valeurStock().subtract(avant)).isEqualByComparingTo("500.00");
+    }
+
     // ── Re-pricing a whole commande ───────────────────────────────────
 
     /** The order total is set directly; the lines keep their proportions. */
@@ -448,9 +581,9 @@ class AchatLignePrixTests {
     /** The user is told when the correction had nowhere to land. */
     @Test
     void aWarningIsRaisedWhenTheStockIsGone() {
-        assertThat(AchatServiceImpl.repricingWarning(AchatStatut.LIVRE, false))
+        assertThat(AchatServiceImpl.repricingWarning(AchatStatut.LIVRE, AchatService.Revalorisation.IMPOSSIBLE))
                 .contains("plus en stock");
-        assertThat(AchatServiceImpl.repricingWarning(AchatStatut.PAYE, false))
+        assertThat(AchatServiceImpl.repricingWarning(AchatStatut.PAYE, AchatService.Revalorisation.IMPOSSIBLE))
                 .contains("caisse")
                 .contains("plus en stock");
     }
@@ -458,6 +591,26 @@ class AchatLignePrixTests {
     private BigDecimal valeurStock() {
         return BigDecimal.valueOf(stockArticleRepository.sumValeurStockHt())
                 .setScale(2, java.math.RoundingMode.HALF_UP);
+    }
+
+    /** Takes quantity out of the stock the order delivered, as site use would. */
+    private void consommer(AchatResponse achat, double quantite) {
+        stockService.createMouvement(new com.buildflow.erp.domain.stock.dto.request.CreateMouvementStockRequest(
+                articleIdOf(achat), chantierIdOf(achat),
+                com.buildflow.erp.domain.stock.entity.TypeMouvement.SORTIE,
+                BigDecimal.valueOf(quantite).setScale(3, java.math.RoundingMode.HALF_UP),
+                "consommation", null));
+    }
+
+    private com.buildflow.erp.domain.stock.entity.StockArticle ligneStock(AchatResponse achat) {
+        return stockArticleRepository
+                .findByArticleIdAndChantierId(articleIdOf(achat), chantierIdOf(achat))
+                .orElseThrow();
+    }
+
+    private UUID articleIdOf(AchatResponse achat) {
+        return articleRepository.findByCode(achat.lignes().getFirst().articleCode())
+                .orElseThrow().getId();
     }
 
     private UUID chantierIdOf(AchatResponse achat) {

@@ -221,26 +221,23 @@ public class StockServiceImpl implements StockService {
 
     @Override
     @Transactional
-    public boolean revaloriser(UUID articleId, UUID chantierId, BigDecimal quantite, double deltaPrix) {
+    public BigDecimal revaloriser(UUID articleId, UUID chantierId, BigDecimal quantite, double deltaPrix) {
         java.util.Optional<StockArticle> ligne = chantierId == null
                 ? stockArticleRepository.findByArticleIdAndChantierIsNull(articleId)
                 : stockArticleRepository.findByArticleIdAndChantierId(articleId, chantierId);
 
         if (ligne.isEmpty()) {
-            return false;
+            return BigDecimal.ZERO;
         }
 
-        // The correction is the whole value difference on what was received. It
-        // is spread over what is still held, which is the best that can be done
-        // once part of the delivery has been consumed or moved on.
         StockArticle stock = ligne.get();
-        boolean applique = stock.corrigerValeur(quantite.multiply(BigDecimal.valueOf(deltaPrix)));
-        if (applique) {
+        BigDecimal corrigee = stock.corrigerValeur(quantite, deltaPrix);
+        if (corrigee.signum() > 0) {
             stockArticleRepository.save(stock);
-            log.info("Revalorisation stock article {} : {} x {} = {}",
-                    articleId, quantite, deltaPrix, quantite.doubleValue() * deltaPrix);
+            log.info("Revalorisation article {} : {} unités sur {} livrées, {} par unité",
+                    articleId, corrigee, quantite, deltaPrix);
         }
-        return applique;
+        return corrigee;
     }
 
     private Chantier resolveChantier(UUID chantierId) {

@@ -222,9 +222,9 @@ public class AchatServiceImpl implements AchatService {
         double prixAvant = ligne.getPrixUnitaire();
 
         appliquerPrix(ligne, request.prixUnitaire());
-        boolean stockRevalorise = revaloriserStock(achat, ligne, prixAvant, request.prixUnitaire());
+        Revalorisation revalorisation = revaloriserStock(achat, ligne, prixAvant, request.prixUnitaire());
 
-        return finaliserRepricing(achat, ttcAvant, stockRevalorise);
+        return finaliserRepricing(achat, ttcAvant, revalorisation);
     }
 
     /**
@@ -259,7 +259,7 @@ public class AchatServiceImpl implements AchatService {
         BigDecimal ttcAvant = achat.getTtc();
         BigDecimal cible = montantHt.setScale(2, RoundingMode.HALF_UP);
         BigDecimal cumul = BigDecimal.ZERO;
-        boolean stockRevalorise = true;
+        Revalorisation revalorisation = Revalorisation.COMPLETE;
 
         for (int i = 0; i < lignes.size(); i++) {
             LigneAchat ligne = lignes.get(i);
@@ -276,10 +276,22 @@ public class AchatServiceImpl implements AchatService {
                     .doubleValue();
 
             appliquerPrix(ligne, prixApres);
-            stockRevalorise &= revaloriserStock(achat, ligne, prixAvant, prixApres);
+            revalorisation = pireDes(revalorisation, revaloriserStock(achat, ligne, prixAvant, prixApres));
         }
 
-        return finaliserRepricing(achat, ttcAvant, stockRevalorise);
+        return finaliserRepricing(achat, ttcAvant, revalorisation);
+    }
+
+    /**
+     * The order as a whole is only fully corrected if every line was. One line
+     * short of stock makes the whole re-pricing partial, since the user is
+     * being told about the commande, not about a line.
+     */
+    private static Revalorisation pireDes(Revalorisation cumul, Revalorisation ligne) {
+        if (cumul == ligne) {
+            return cumul;
+        }
+        return Revalorisation.PARTIELLE;
     }
 
     /** Sets a line's unit price and its total, which is derived from it. */
@@ -296,21 +308,29 @@ public class AchatServiceImpl implements AchatService {
      * difference, and the marge nette reads that shortfall as a loss that never
      * happened — the écart of qté × Δprix users were reporting.
      *
-     * @return false when the correction had nowhere to land
+     * <p>Only the units still held are corrected. What was consumed left at the
+     * old price and stays there.
      */
-    private boolean revaloriserStock(Achat achat, LigneAchat ligne, double prixAvant, double prixApres) {
+    private Revalorisation revaloriserStock(Achat achat, LigneAchat ligne, double prixAvant, double prixApres) {
         if (achat.getStatut() == AchatStatut.EN_COURS || Double.compare(prixAvant, prixApres) == 0) {
-            return true;   // nothing received yet, or nothing changed
+            return Revalorisation.COMPLETE;   // nothing received yet, or nothing changed
         }
-        return stockService.revaloriser(
+
+        BigDecimal livree = BigDecimal.valueOf(ligne.getQuantite()).setScale(3, RoundingMode.HALF_UP);
+        BigDecimal corrigee = stockService.revaloriser(
                 ligne.getArticle().getId(),
                 achat.getChantier().getId(),
-                BigDecimal.valueOf(ligne.getQuantite()).setScale(3, RoundingMode.HALF_UP),
+                livree,
                 prixApres - prixAvant);
+
+        if (corrigee.signum() <= 0) {
+            return Revalorisation.IMPOSSIBLE;
+        }
+        return corrigee.compareTo(livree) >= 0 ? Revalorisation.COMPLETE : Revalorisation.PARTIELLE;
     }
 
     /** Rolls the new line prices up, reconciles the caisse, and saves. */
-    private RepricingResult finaliserRepricing(Achat achat, BigDecimal ttcAvant, boolean stockRevalorise) {
+    private RepricingResult finaliserRepricing(Achat achat, BigDecimal ttcAvant, Revalorisation revalorisation) {
         recomputeTotals(achat);
 
         // An order already settled from the caisse has moved real money. Leaving
@@ -330,14 +350,14 @@ public class AchatServiceImpl implements AchatService {
 
         Achat saved = achatRepository.save(achat);
         return new RepricingResult(achatMapper.toResponse(saved),
-                repricingWarning(saved.getStatut(), stockRevalorise));
+                repricingWarning(saved.getStatut(), revalorisation));
     }
 
     /**
      * Message warning that re-pricing has left something downstream out of step,
      * or {@code null} when nothing needs saying.
      */
-    public static String repricingWarning(AchatStatut statut, boolean stockRevalorise) {
+    public static String repricingWarning(AchatStatut statut, Revalorisation revalorisation) {
         String surStatut = switch (statut) {
             case EN_COURS, LIVRE -> null;
             case FACTURE -> "Prix mis à jour. La facture déjà enregistrée pour cette commande "
@@ -348,11 +368,17 @@ public class AchatServiceImpl implements AchatService {
                     + "passée en écriture d'ajustement sur la caisse du chantier.";
         };
 
-        if (stockRevalorise) {
+        String surStock = switch (revalorisation) {
+            case COMPLETE -> null;
+            case PARTIELLE -> "Une partie de la marchandise a déjà été consommée : "
+                    + "seul le stock restant a été revalorisé, l'écart sur le reste est un coût passé.";
+            case IMPOSSIBLE -> "La marchandise reçue sur cette commande n'est plus en stock : "
+                    + "sa valeur n'a pas pu être corrigée.";
+        };
+
+        if (surStock == null) {
             return surStatut;
         }
-        String surStock = "La marchandise reçue sur cette commande n'est plus en stock : "
-                + "sa valeur n'a pas pu être corrigée.";
         return surStatut == null ? "Prix mis à jour. " + surStock : surStatut + " " + surStock;
     }
 

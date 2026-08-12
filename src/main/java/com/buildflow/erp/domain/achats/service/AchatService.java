@@ -18,6 +18,22 @@ public interface AchatService {
     AchatResponse updateIndicateurs(UUID id, UpdateIndicateursRequest request);
 
     /**
+     * How far a re-pricing reached the stock the order had delivered. Material
+     * consumed before the correction left at the old price, and that cost
+     * cannot be put back into stock — so the correction is not always whole,
+     * and the difference is worth telling the user about rather than leaving
+     * them to find it in the marge.
+     */
+    enum Revalorisation {
+        /** Nothing had been received, or every unit delivered was corrected. */
+        COMPLETE,
+        /** Part of the delivery has been consumed or moved on. */
+        PARTIELLE,
+        /** None of it is in stock any more. */
+        IMPOSSIBLE
+    }
+
+    /**
      * A re-priced order, together with anything the change left out of step —
      * an invoice that no longer matches, stock that could not be re-valued.
      * Null warning means nothing needs saying.

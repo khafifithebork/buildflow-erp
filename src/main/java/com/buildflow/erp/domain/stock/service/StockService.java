@@ -27,11 +27,15 @@ public interface StockService {
      * re-priced. Without this the stock keeps the old price and the marge nette
      * carries the difference as a loss that never happened.
      *
+     * <p>Only what is still held gets corrected — see
+     * {@link com.buildflow.erp.domain.stock.entity.StockArticle#corrigerValeur}.
+     *
      * @param quantite  what was received on that line
      * @param deltaPrix the change in unit price
-     * @return false when nothing is held any more, so the correction had
-     *         nowhere to land — the caller reports that to the user
+     * @return how much of that quantity the correction reached; zero when none
+     *         of it is in stock any more, and less than {@code quantite} when
+     *         part of it has been consumed — the caller reports either
      */
-    boolean revaloriser(java.util.UUID articleId, java.util.UUID chantierId,
-                        java.math.BigDecimal quantite, double deltaPrix);
+    java.math.BigDecimal revaloriser(java.util.UUID articleId, java.util.UUID chantierId,
+                                     java.math.BigDecimal quantite, double deltaPrix);
 }
