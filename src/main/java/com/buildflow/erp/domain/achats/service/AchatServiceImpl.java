@@ -71,8 +71,6 @@ public class AchatServiceImpl implements AchatService {
         achat.setImpactAnalytiqueChantier(Boolean.TRUE.equals(request.impactAnalytiqueChantier()));
         achat.setImpactComptableFiscal(Boolean.TRUE.equals(request.impactComptableFiscal()));
 
-        BigDecimal totalHt = BigDecimal.ZERO;
-
         for (CreateLigneAchatRequest ligneReq : request.lignes()) {
             Article article = articleRepository.findById(ligneReq.articleId())
                     .orElseThrow(() -> new ResourceNotFoundException("Article", ligneReq.articleId()));
@@ -84,6 +82,7 @@ public class AchatServiceImpl implements AchatService {
             ligne.setUnite(article.getUnite());             // Snapshot
             ligne.setQuantite(ligneReq.quantite());
             ligne.setPrixUnitaire(ligneReq.prixUnitaire());
+            ligne.setTvaRate(Tva.tauxDeLArticle(article.getTvaRate()));
 
             if (ligneReq.bpuLigneId() != null) {
                 BpuLigne bpuLigne = bpuLigneRepository.findById(ligneReq.bpuLigneId())
@@ -98,16 +97,10 @@ public class AchatServiceImpl implements AchatService {
                     .setScale(2, RoundingMode.HALF_UP);
             ligne.setTotal(ligneTotal);
 
-            totalHt = totalHt.add(ligneTotal);
             achat.getLignes().add(ligne);
         }
 
-        BigDecimal tva = Tva.sur(totalHt);
-        BigDecimal ttc = totalHt.add(tva);
-
-        achat.setHt(totalHt);
-        achat.setTva(tva);
-        achat.setTtc(ttc);
+        recomputeTotals(achat);
 
         Achat saved = achatRepository.save(achat);
         return achatMapper.toResponse(saved);
@@ -425,16 +418,26 @@ public class AchatServiceImpl implements AchatService {
     }
 
     /** Recomputes HT / TVA / TTC from the order's lines. */
+    /**
+     * Recalcule HT / TVA / TTC à partir des lignes.
+     *
+     * <p>La taxe se calcule ligne par ligne, chacune à son propre taux, et non
+     * sur le total : une commande peut mélanger des articles taxés
+     * différemment, et un taux moyen appliqué au total ne donnerait la bonne
+     * réponse que si tous se valaient.
+     */
     private void recomputeTotals(Achat achat) {
-        BigDecimal totalHt = achat.getLignes().stream()
-                .map(LigneAchat::getTotal)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalHt = BigDecimal.ZERO;
+        BigDecimal totalTva = BigDecimal.ZERO;
 
-        BigDecimal tva = Tva.sur(totalHt);
+        for (LigneAchat ligne : achat.getLignes()) {
+            totalHt = totalHt.add(ligne.getTotal());
+            totalTva = totalTva.add(Tva.sur(ligne.getTotal(), ligne.getTvaRate()));
+        }
 
         achat.setHt(totalHt);
-        achat.setTva(tva);
-        achat.setTtc(totalHt.add(tva));
+        achat.setTva(totalTva);
+        achat.setTtc(totalHt.add(totalTva));
     }
 
     private Achat findEntityById(UUID id) {

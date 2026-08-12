@@ -119,3 +119,6 @@ databaseChangeLog:
   - include:
       file: db/changelog/changes/040-link-caisse-transactions-to-documents.sql
       relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/041-add-tva-rate-to-lignes-achat.sql
+      relativeToChangelogFile: false

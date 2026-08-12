@@ -330,6 +330,64 @@ class AchatLignePrixTests {
         assertThat(achat.ref()).matches("^ACH-\\d{4}-\\d{3,}$");
     }
 
+    // ── Taux de TVA ───────────────────────────────────────────────────
+
+    /**
+     * Régression : {@code articles.tva_rate} était saisi, validé, exporté — et
+     * ignoré, la taxe étant calculée avec une constante. Tant que le catalogue
+     * entier partage le taux de la constante, les deux nombres coïncident et
+     * rien ne se voit. Ce test les décale exprès.
+     */
+    @Test
+    void laTvaSuitLeTauxDeLArticleEtNonUneConstante() {
+        AchatResponse achat = createAchat(10, 100.00, 100.00, new BigDecimal("14.00"));
+
+        assertThat(achat.ht()).isEqualByComparingTo("1000.00");
+        assertThat(achat.tva()).isEqualByComparingTo("140.00");
+        assertThat(achat.ttc()).isEqualByComparingTo("1140.00");
+    }
+
+    /** Une commande peut mélanger des taux ; chaque ligne compte avec le sien. */
+    @Test
+    void uneCommandeMelangeantDeuxTauxLesAppliqueLigneParLigne() {
+        AchatResponse achat = createAchatDeuxTaux(
+                10, 100.00, new BigDecimal("20.00"),     // 1000 HT -> 200
+                10, 100.00, new BigDecimal("7.00"));     // 1000 HT ->  70
+
+        assertThat(achat.ht()).isEqualByComparingTo("2000.00");
+        assertThat(achat.tva()).isEqualByComparingTo("270.00");
+        assertThat(achat.ttc()).isEqualByComparingTo("2270.00");
+    }
+
+    /**
+     * Le taux est figé à la commande, pas relu chez l'article : une commande
+     * facturée à 14 % ne se réécrit pas parce que le référentiel a changé.
+     */
+    @Test
+    void leTauxResteCeluiDeLaCommandeQuandLArticleChange() {
+        AchatResponse achat = createAchat(10, 100.00, 100.00, new BigDecimal("14.00"));
+        Article article = articleRepository.findByCode(
+                achat.lignes().getFirst().articleCode()).orElseThrow();
+
+        article.setTvaRate(new BigDecimal("20.00"));
+        articleRepository.saveAndFlush(article);
+
+        // une re-tarification recalcule les totaux : le taux d'origine doit tenir
+        AchatResponse apres = achatService.updateLignePrix(
+                achat.id(), achat.lignes().getFirst().id(), new UpdateLignePrixRequest(200.00)).achat();
+
+        assertThat(apres.ht()).isEqualByComparingTo("2000.00");
+        assertThat(apres.tva()).as("toujours 14 %").isEqualByComparingTo("280.00");
+    }
+
+    /** Le taux voyage jusqu'à la ligne renvoyée, en fraction. */
+    @Test
+    void leTauxFigeEstVisibleSurLaLigne() {
+        AchatResponse achat = createAchat(1, 100.00, 100.00, new BigDecimal("7.00"));
+
+        assertThat(achat.lignes().getFirst().tvaRate()).isEqualByComparingTo("0.0700");
+    }
+
     // ── Annulation d'un paiement ──────────────────────────────────────
 
     /**
@@ -771,8 +829,60 @@ class AchatLignePrixTests {
         return createAchat(quantite, prixUnitaire, prixUnitaire);
     }
 
+    /** Une commande de deux lignes portant chacune son propre taux. */
+    private AchatResponse createAchatDeuxTaux(double qte1, double pu1, BigDecimal tva1,
+                                              double qte2, double pu2, BigDecimal tva2) {
+        String suffix = "IT-" + SEQ.incrementAndGet() + "-" + UUID.randomUUID().toString().substring(0, 8);
+
+        UUID chantierId = chantierService.create(new CreateChantierRequest(
+                "Chantier taux " + suffix, "Client", "adresse", "Casablanca",
+                ChantierStatut.EN_PREPARATION, LocalDate.now(), LocalDate.now().plusMonths(3),
+                new BigDecimal("100000.00"), "Chef", List.of(), List.of())).id();
+
+        Fournisseur fournisseur = new Fournisseur();
+        fournisseur.setCode("F-" + suffix);
+        fournisseur.setRaisonSociale("Fournisseur " + suffix);
+        fournisseur.setIce("ICE" + suffix);
+        fournisseur.setStatut(FournisseurStatut.ACTIF);
+        fournisseur = fournisseurRepository.save(fournisseur);
+
+        UUID a1 = article(suffix + "-A", pu1, tva1);
+        UUID a2 = article(suffix + "-B", pu2, tva2);
+
+        return achatService.create(new CreateAchatRequest(
+                fournisseur.getId(), chantierId, LocalDate.now(), LocalDate.now().plusDays(7),
+                List.of(new CreateLigneAchatRequest(a1, qte1, pu1, null),
+                        new CreateLigneAchatRequest(a2, qte2, pu2, null)),
+                null, null));
+    }
+
+    private UUID article(String suffix, double prix, BigDecimal tvaPourcent) {
+        CategorieArticle categorie = categorieArticleRepository.findAll().stream().findFirst()
+                .orElseGet(() -> {
+                    CategorieArticle c = new CategorieArticle();
+                    c.setCode("ITT" + (SEQ.get() % 1000));
+                    c.setLibelle("Catégorie de test");
+                    return categorieArticleRepository.save(c);
+                });
+
+        Article article = new Article();
+        article.setCode("ART-T-" + suffix);
+        article.setDesignation("Article " + suffix);
+        article.setCategorie(categorie);
+        article.setUnite("U");
+        article.setPrixAchatRef(prix);
+        article.setTvaRate(tvaPourcent);
+        return articleRepository.save(article).getId();
+    }
+
     /** prixAchatRef is the article's catalogue price; prixUnitaire is what this order pays. */
     private AchatResponse createAchat(double quantite, double prixUnitaire, double prixAchatRef) {
+        return createAchat(quantite, prixUnitaire, prixAchatRef, new BigDecimal("10.00"));
+    }
+
+    /** {@code tvaPourcent} est le taux porté par l'article, en pourcentage. */
+    private AchatResponse createAchat(double quantite, double prixUnitaire, double prixAchatRef,
+                                      BigDecimal tvaPourcent) {
         String suffix = "IT-" + SEQ.incrementAndGet() + "-" + UUID.randomUUID().toString().substring(0, 8);
 
         UUID chantierId = chantierService.create(new CreateChantierRequest(
@@ -801,7 +911,7 @@ class AchatLignePrixTests {
         article.setCategorie(categorie);
         article.setUnite("U");
         article.setPrixAchatRef(prixAchatRef);
-        article.setTvaRate(new BigDecimal("20.00"));
+        article.setTvaRate(tvaPourcent);
         article = articleRepository.save(article);
 
         return achatService.create(new CreateAchatRequest(
