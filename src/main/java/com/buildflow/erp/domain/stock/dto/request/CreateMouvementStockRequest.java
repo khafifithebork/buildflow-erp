@@ -1,7 +1,6 @@
 package com.buildflow.erp.domain.stock.dto.request;
 
 import com.buildflow.erp.domain.stock.entity.TypeMouvement;
-import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
 
 import java.math.BigDecimal;
@@ -17,7 +16,19 @@ public record CreateMouvementStockRequest(
         UUID chantierId,
 
         @NotNull TypeMouvement typeMouvement,
-        @NotNull @DecimalMin("0.001") BigDecimal quantite,
+
+        /**
+         * Signée pour un {@code AJUSTEMENT} seulement : un écart d'inventaire se
+         * constate dans les deux sens, et le borner au positif obligeait à
+         * saisir un manquant en {@code SORTIE}, où il se mélangeait aux
+         * consommations réelles.
+         *
+         * <p>Une entrée, une sortie ou un transfert portent leur sens dans leur
+         * type et gardent une quantité positive. La règle dépend donc du type,
+         * ce qu'une contrainte de champ ne sait pas exprimer : c'est le service
+         * qui la vérifie.
+         */
+        @NotNull BigDecimal quantite,
         String documentRef,
 
         /**

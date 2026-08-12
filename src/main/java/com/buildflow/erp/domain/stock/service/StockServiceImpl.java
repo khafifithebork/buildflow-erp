@@ -109,18 +109,24 @@ public class StockServiceImpl implements StockService {
             return transferer(article, source, request);
         }
 
+        assertQuantiteCoherente(request);
         StockArticle stock = findOrCreateStock(article, source);
 
         switch (request.typeMouvement()) {
             // A hand-entered arrival carries no price of its own, so it comes in
             // at whatever the line already costs — or, on a line receiving its
             // first goods, at the article's reference price.
-            case ENTREE, AJUSTEMENT -> {
+            case ENTREE -> {
                 stock.integrerArrivage(request.quantite(), stock.quantiteTotale().signum() > 0
                         ? stock.getCoutUnitaire()
                         : article.getPrixAchatRef());
                 stock.setQuantiteTheorique(stock.getQuantiteTheorique().add(request.quantite()));
             }
+            // Un écart d'inventaire aligne le théorique sur le physique. Il ne
+            // change pas ce que la marchandise a coûté : un excédent découvert
+            // vaut ce que vaut le reste de la ligne, un manquant emporte sa part
+            // au même prix. Le coût unitaire ne bouge donc pas.
+            case AJUSTEMENT -> ajuster(stock, request.quantite());
             case SORTIE -> retirer(stock, request.quantite());
             case TRANSFERT -> throw new IllegalStateException("handled above");
         }
@@ -259,6 +265,39 @@ public class StockServiceImpl implements StockService {
             created.setChantier(chantier);
             return created;
         });
+    }
+
+    /**
+     * Seul un ajustement peut être négatif : il constate un écart d'inventaire,
+     * qui va dans les deux sens. Une entrée, une sortie ou un transfert portent
+     * leur sens dans leur type — une « sortie de -3 » ne veut rien dire.
+     */
+    private static void assertQuantiteCoherente(CreateMouvementStockRequest request) {
+        if (request.typeMouvement() == TypeMouvement.AJUSTEMENT) {
+            if (request.quantite().signum() == 0) {
+                throw new BusinessRuleException("Un ajustement de zéro ne constate aucun écart.");
+            }
+            return;
+        }
+        if (request.quantite().signum() <= 0) {
+            throw new BusinessRuleException(
+                    "La quantité d'un mouvement " + request.typeMouvement()
+                            + " doit être positive. Pour constater un écart d'inventaire, "
+                            + "utilisez un AJUSTEMENT, qui accepte une quantité négative.");
+        }
+    }
+
+    /**
+     * Aligne le théorique sur le physique. Un manquant ne peut pas dépasser ce
+     * qui est disponible — le stock posé n'est plus en rayon, il n'y a rien à
+     * y reprendre.
+     */
+    private static void ajuster(StockArticle stock, BigDecimal ecart) {
+        if (ecart.signum() < 0) {
+            retirer(stock, ecart.negate());
+            return;
+        }
+        stock.setQuantiteTheorique(stock.getQuantiteTheorique().add(ecart));
     }
 
     private static void retirer(StockArticle stock, BigDecimal quantite) {
