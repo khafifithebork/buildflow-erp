@@ -5,8 +5,11 @@ import com.buildflow.erp.common.exception.ResourceNotFoundException;
 import com.buildflow.erp.domain.achats.entity.Achat;
 import com.buildflow.erp.domain.achats.entity.AchatStatut;
 import com.buildflow.erp.domain.achats.repository.AchatRepository;
+import com.buildflow.erp.domain.salaires.entity.DemandePaie;
+import com.buildflow.erp.domain.salaires.entity.DemandePaieStatut;
 import com.buildflow.erp.domain.salaires.entity.FichePaie;
 import com.buildflow.erp.domain.salaires.entity.FichePaieStatut;
+import com.buildflow.erp.domain.salaires.repository.DemandePaieRepository;
 import com.buildflow.erp.domain.salaires.repository.FichePaieRepository;
 import com.buildflow.erp.domain.soustraitance.entity.PaiementSousTraitant;
 import com.buildflow.erp.domain.soustraitance.entity.PaiementStatut;
@@ -35,6 +38,7 @@ public class ModePaiementService {
 
     private final AchatRepository achatRepository;
     private final FichePaieRepository fichePaieRepository;
+    private final DemandePaieRepository demandePaieRepository;
     private final PaiementSousTraitantRepository paiementRepository;
     private final ModePaiementAudit audit;
 
@@ -44,6 +48,7 @@ public class ModePaiementService {
             case ACHAT -> changerAchat(documentId, nouveau);
             case FICHE_PAIE -> changerFichePaie(documentId, nouveau);
             case PAIEMENT_SOUS_TRAITANT -> changerPaiementSousTraitant(documentId, nouveau);
+            case DEMANDE_PAIE -> changerDemandePaie(documentId, nouveau);
         };
     }
 
@@ -87,6 +92,25 @@ public class ModePaiementService {
         audit.record(TypeDocumentPaiement.FICHE_PAIE, id, fiche.getReference(), ancien, nouveau);
 
         return new ModePaiementResponse(TypeDocumentPaiement.FICHE_PAIE, id, fiche.getReference(),
+                ancien, nouveau, avertissement(ancien, nouveau));
+    }
+
+    private ModePaiementResponse changerDemandePaie(UUID id, ModePaiement nouveau) {
+        DemandePaie demande = demandePaieRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("DemandePaie", id));
+
+        if (demande.getStatut() != DemandePaieStatut.PAYEE) {
+            throw new BusinessRuleException(
+                    "Le mode de paiement ne peut être modifié que sur une demande de paie payée (statut actuel : "
+                            + demande.getStatut() + ").");
+        }
+
+        ModePaiement ancien = demande.getModePaiement();
+        demande.setModePaiement(nouveau);
+        demandePaieRepository.save(demande);
+        audit.record(TypeDocumentPaiement.DEMANDE_PAIE, id, demande.getReference(), ancien, nouveau);
+
+        return new ModePaiementResponse(TypeDocumentPaiement.DEMANDE_PAIE, id, demande.getReference(),
                 ancien, nouveau, avertissement(ancien, nouveau));
     }
 

@@ -15,5 +15,8 @@ public enum TypeDocumentPaiement {
     FICHE_PAIE,
 
     /** A subcontractor payment — {@code paiements_sous_traitant}. */
-    PAIEMENT_SOUS_TRAITANT
+    PAIEMENT_SOUS_TRAITANT,
+
+    /** A payroll disbursement with no payslip — {@code demandes_paie}. */
+    DEMANDE_PAIE
 }
