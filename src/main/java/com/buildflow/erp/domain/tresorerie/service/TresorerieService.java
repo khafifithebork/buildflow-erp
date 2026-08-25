@@ -66,7 +66,9 @@ public interface TresorerieService {
 
     /**
      * Cross-domain method: called by SalaireServiceImpl when a FichePaie is paid
-     * with modePaiement=CAISSE. Debits the caisse associated with the fiche's chantier.
+     * and by DemandePaieServiceImpl when a DemandePaie is paid, in both cases
+     * with modePaiement=CAISSE. Debits the caisse associated with the document's
+     * chantier.
      */
     void debiterPourSalaire(UUID chantierId, BigDecimal montant, String reference);
 

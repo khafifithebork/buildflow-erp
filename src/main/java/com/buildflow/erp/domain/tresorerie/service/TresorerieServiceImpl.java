@@ -197,6 +197,7 @@ public class TresorerieServiceImpl implements TresorerieService {
             case ACHAT -> "Paiement achat";
             case PAIEMENT_SOUS_TRAITANT -> "Paiement sous-traitant";
             case FICHE_PAIE -> "Paiement salaire";
+            case DEMANDE_PAIE -> "Paiement demande de paie";
         };
     }
 

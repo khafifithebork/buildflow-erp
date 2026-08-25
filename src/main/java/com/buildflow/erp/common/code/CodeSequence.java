@@ -32,7 +32,10 @@ public enum CodeSequence {
 
     // ── Caller supplies the discriminator ───────────────────────────────
     /** Resets per payroll period; the period appears in the code (FDP-2026-07-001). */
-    FICHE_PAIE("FDP", Reset.PER_DISCRIMINATOR_IN_CODE);
+    FICHE_PAIE("FDP", Reset.PER_DISCRIMINATOR_IN_CODE),
+
+    /** Same reset as the payslip it sits beside (DP-2026-07-001). */
+    DEMANDE_PAIE("DP", Reset.PER_DISCRIMINATOR_IN_CODE);
 
     // Note: BpuLigne.ref is intentionally absent. Those refs come from the
     // client's tender document rather than from us, so they stay hand-entered.
