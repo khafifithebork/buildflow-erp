@@ -37,8 +37,6 @@ public class BpuLigneServiceImpl implements BpuLigneService {
     private final BpuLigneMapper bpuLigneMapper;
     private final BpuExcelParser bpuExcelParser;
 
-    private static final BigDecimal TVA_MULTIPLIER = new BigDecimal("1.20");
-
     @Override
     @Transactional
     public BpuLigneResponse create(UUID chantierId, CreateBpuLigneRequest request) {
@@ -132,13 +130,27 @@ public class BpuLigneServiceImpl implements BpuLigneService {
     private BpuLigneResponse withConsommation(BpuLigne ligne) {
         BpuLigneResponse base = bpuLigneMapper.toResponse(ligne);
 
+        // Le bordereau se tient en hors taxes. Deux des quatre sources n'ont
+        // pas de taxe à retirer, et les convertir en invente une :
+        //
+        //   achats          SUM(ligne.total) = qté × PU, déjà HT (la TVA vit
+        //                   à côté, sur ligne.tvaRate)
+        //   sous-traitance  contrat.montantHt, HT par construction
+        //   paie            le net à payer ; un salaire ne porte pas de TVA
+        //   caisse          la dépense d'espèces imputée à la ligne ; pas de
+        //                   facture derrière, donc rien à déduire
+        //
+        // La caisse était divisée par 1,20 pour « repasser en HT ». Deux fautes
+        // dans un seul calcul : elle sous-évaluait de 17 % une dépense qui ne
+        // portait aucune taxe, et le 1,20 était figé ici alors que le taux est
+        // passé à 10 % dans Tva.TAUX_PAR_DEFAUT — le seul endroit censé le
+        // porter. Les quatre montants s'additionnent maintenant tels quels.
         BigDecimal achatsHt = achatRepository.sumMontantEngageByBpuLigneId(ligne.getId());
-        BigDecimal caisseTtc = caisseTransactionRepository.sumMontantTtcByBpuLigneId(ligne.getId());
-        BigDecimal caisseHt = caisseTtc.divide(TVA_MULTIPLIER, 2, RoundingMode.HALF_UP);
-        BigDecimal paieHt = fichePaieRepository.sumMontantEngageByBpuLigneId(ligne.getId());
+        BigDecimal caisse = caisseTransactionRepository.sumMontantByBpuLigneId(ligne.getId());
+        BigDecimal paie = fichePaieRepository.sumMontantEngageByBpuLigneId(ligne.getId());
         BigDecimal sousTraitanceHt = contratSousTraitantRepository.sumMontantEngageByBpuLigneId(ligne.getId());
 
-        BigDecimal montantEngageHt = achatsHt.add(caisseHt).add(paieHt).add(sousTraitanceHt);
+        BigDecimal montantEngageHt = achatsHt.add(caisse).add(paie).add(sousTraitanceHt);
 
         BigDecimal tauxConsommation = ligne.getBudgetPrevuHt().compareTo(BigDecimal.ZERO) > 0
                 ? montantEngageHt.divide(ligne.getBudgetPrevuHt(), 4, RoundingMode.HALF_UP)
