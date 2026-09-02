@@ -19,12 +19,23 @@ public interface CaisseTransactionRepository extends JpaRepository<CaisseTransac
     /** Cash operations booked against any caisse of a given chantier. */
     long countByCaisse_ChantierId(UUID chantierId);
 
+    /**
+     * Les espèces sorties pour une ligne du bordereau.
+     *
+     * <p>Seules les écritures saisies à la main portent une ligne BPU : un
+     * règlement de document passe par {@code debiterPourDocument}, qui n'en
+     * impute aucune. Il n'y a donc pas de double compte avec les achats.
+     *
+     * <p>Le montant est rendu tel quel. Il s'appelait {@code ...Ttc} et son
+     * seul appelant le divisait par 1,20 : une dépense d'espèces sans facture
+     * ne porte pas de TVA à retrancher.
+     */
     @Query("""
             SELECT COALESCE(SUM(t.montant), 0) FROM CaisseTransaction t
             WHERE t.bpuLigne.id = :bpuLigneId
             AND t.typeTransaction = com.buildflow.erp.domain.tresorerie.entity.TypeTransaction.DEBIT
             """)
-    BigDecimal sumMontantTtcByBpuLigneId(@Param("bpuLigneId") UUID bpuLigneId);
+    BigDecimal sumMontantByBpuLigneId(@Param("bpuLigneId") UUID bpuLigneId);
 
     // Net cash out, not gross debits. A correcting credit — the refund posted
     // when a settled order is re-priced down — has to come back off the total,
