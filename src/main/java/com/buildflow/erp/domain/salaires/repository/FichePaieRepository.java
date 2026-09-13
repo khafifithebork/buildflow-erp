@@ -35,6 +35,16 @@ public interface FichePaieRepository extends JpaRepository<FichePaie, UUID> {
             """)
     BigDecimal sumNetAPayerNonPayees();
 
+    // Paie déjà réglée : toutes les fiches payées, quel qu'en soit le mode.
+    // Distinct de sumNetAPayerPayeesAllTime, qui écarte la caisse pour ne pas
+    // compter deux fois un décaissement déjà porté par les écritures de
+    // caisse. Ici on affiche un cumul, pas un flux : rien à écarter.
+    @Query("""
+            SELECT COALESCE(SUM(f.netAPayer), 0) FROM FichePaie f
+            WHERE f.statut = com.buildflow.erp.domain.salaires.entity.FichePaieStatut.PAYEE
+            """)
+    BigDecimal sumNetAPayerPayees();
+
     @Query("""
             SELECT COALESCE(SUM(f.netAPayer), 0) FROM FichePaie f
             WHERE f.statut = com.buildflow.erp.domain.salaires.entity.FichePaieStatut.PAYEE

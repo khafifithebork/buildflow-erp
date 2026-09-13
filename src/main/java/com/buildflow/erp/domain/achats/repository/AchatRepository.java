@@ -28,6 +28,16 @@ public interface AchatRepository extends JpaRepository<Achat, UUID> {
             """)
     BigDecimal sumTtcNonPayees();
 
+    // Le pendant de la dette : ce qui a déjà été réglé, toutes commandes
+    // soldées confondues. Aucun filtre sur le mode de paiement ni sur la
+    // période — la carte lit un cumul, pas un flux, et dette + déjà payé doit
+    // redonner le total commandé.
+    @Query("""
+            SELECT COALESCE(SUM(a.ttc), 0) FROM Achat a
+            WHERE a.statut = com.buildflow.erp.domain.achats.entity.AchatStatut.PAYE
+            """)
+    BigDecimal sumTtcPayees();
+
     // Same outstanding orders valued HT, for the margin formulas that read
     // everything net of tax.
     @Query("""

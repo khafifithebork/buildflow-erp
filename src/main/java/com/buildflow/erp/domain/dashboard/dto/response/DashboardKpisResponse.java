@@ -12,6 +12,14 @@ public record DashboardKpisResponse(
         BigDecimal dettesFournisseursHt,
         BigDecimal dettesSousTraitantsHt,
         BigDecimal paieAPayerNet,
+        /**
+         * What each of the three debts above has already had settled against
+         * it, cumulative and every payment mode included. The debt figure is
+         * the remainder, so debt + settled is the total ever committed.
+         */
+        BigDecimal dettesFournisseursPayeTtc,
+        BigDecimal dettesSousTraitantsPayeTtc,
+        BigDecimal paieRegleeNet,
         BigDecimal attachementsEnCoursTtc,
         BigDecimal valeurStocksGlobaleHt,
         /** Split of the line above: material still available, wherever it is held. */
