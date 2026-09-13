@@ -32,6 +32,13 @@ public interface ContratSousTraitantRepository extends JpaRepository<ContratSous
             """)
     BigDecimal sumResteAPayer();
 
+    // Ce qui a déjà été versé, tous contrats confondus. montantPaye porte
+    // le cumul TTC des règlements, y compris sur les contrats soldés.
+    @Query("""
+            SELECT COALESCE(SUM(c.montantPaye), 0) FROM ContratSousTraitant c
+            """)
+    BigDecimal sumMontantPayeTtc();
+
     // Outstanding balance valued HT. montantPaye is a TTC figure, so the
     // remainder is prorated by each contract's own HT/TTC ratio rather than
     // assuming one rate — contracts can carry different TVA amounts.

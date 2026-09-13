@@ -51,6 +51,12 @@ public class DashboardServiceImpl implements DashboardService {
         BigDecimal dettesFournisseursHt = round(achatRepository.sumHtNonPayees());
         BigDecimal dettesSousTraitantsHt = round(contratSousTraitantRepository.sumResteAPayerHt());
         BigDecimal paieAPayerNet = round(fichePaieRepository.sumNetAPayerNonPayees());
+        // Le pendant réglé de chacune des trois dettes ci-dessus. Cumulatif et
+        // tous modes de paiement confondus : la carte montre ce qui est soldé
+        // face à ce qui reste, et les deux doivent redonner le total engagé.
+        BigDecimal dettesFournisseursPayeTtc = round(achatRepository.sumTtcPayees());
+        BigDecimal dettesSousTraitantsPayeTtc = round(contratSousTraitantRepository.sumMontantPayeTtc());
+        BigDecimal paieRegleeNet = round(fichePaieRepository.sumNetAPayerPayees());
         BigDecimal attachementsEnCoursTtc = round(attachementRepository.sumTtcSoumis());
         BigDecimal attachementsEnCoursHt = round(attachementRepository.sumHtSoumis());
         // Stock valuation comes back as a double (prices are DOUBLE PRECISION);
@@ -138,6 +144,9 @@ public class DashboardServiceImpl implements DashboardService {
                 dettesFournisseursHt,
                 dettesSousTraitantsHt,
                 paieAPayerNet,
+                dettesFournisseursPayeTtc,
+                dettesSousTraitantsPayeTtc,
+                paieRegleeNet,
                 attachementsEnCoursTtc,
                 valeurStocksGlobaleHt,
                 valeurStocksDepotHt,
