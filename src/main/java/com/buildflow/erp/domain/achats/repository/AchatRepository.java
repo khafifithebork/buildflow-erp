@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 public interface AchatRepository extends JpaRepository<Achat, UUID> {
@@ -37,6 +38,26 @@ public interface AchatRepository extends JpaRepository<Achat, UUID> {
             WHERE a.statut = com.buildflow.erp.domain.achats.entity.AchatStatut.PAYE
             """)
     BigDecimal sumTtcPayees();
+
+    // La dette par fournisseur, même définition que sumTtcNonPayees mais
+    // ventilée : les valeurs rendues ici somment exactement au total affiché
+    // sur le tableau de bord.
+    //
+    // Une seule requête groupée plutôt qu'un appel par fournisseur — la liste
+    // en compte une centaine et le N+1 se paierait à chaque chargement de page.
+    @Query("""
+            SELECT a.fournisseur.id, COALESCE(SUM(a.ttc), 0) FROM Achat a
+            WHERE a.statut <> com.buildflow.erp.domain.achats.entity.AchatStatut.PAYE
+            GROUP BY a.fournisseur.id
+            """)
+    List<Object[]> sumTtcNonPayeesParFournisseur();
+
+    @Query("""
+            SELECT COALESCE(SUM(a.ttc), 0) FROM Achat a
+            WHERE a.fournisseur.id = :fournisseurId
+            AND a.statut <> com.buildflow.erp.domain.achats.entity.AchatStatut.PAYE
+            """)
+    BigDecimal sumTtcNonPayeesByFournisseurId(@Param("fournisseurId") UUID fournisseurId);
 
     // Same outstanding orders valued HT, for the margin formulas that read
     // everything net of tax.
