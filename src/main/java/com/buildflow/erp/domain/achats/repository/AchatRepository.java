@@ -59,6 +59,32 @@ public interface AchatRepository extends JpaRepository<Achat, UUID> {
             """)
     BigDecimal sumTtcNonPayeesByFournisseurId(@Param("fournisseurId") UUID fournisseurId);
 
+    // Le volume d'affaires de l'année civile, par fournisseur.
+    //
+    // HT : c'est ce que les écrans annoncent — « Achats annuels HT », « HT
+    // cumulé ». Tous statuts confondus, y compris EN_COURS : une commande
+    // passée compte dans le volume même si elle n'est pas encore livrée. La
+    // dépense réellement engagée, elle, se lit ailleurs (BPU) et la dette dans
+    // sumTtcNonPayees.
+    //
+    // Borné par dates plutôt que par YEAR(dateCommande) : l'intervalle reste
+    // utilisable par un index, la fonction non.
+    @Query("""
+            SELECT a.fournisseur.id, COALESCE(SUM(a.ht), 0) FROM Achat a
+            WHERE a.dateCommande BETWEEN :debut AND :fin
+            GROUP BY a.fournisseur.id
+            """)
+    List<Object[]> sumHtParFournisseurEntre(@Param("debut") LocalDate debut, @Param("fin") LocalDate fin);
+
+    @Query("""
+            SELECT COALESCE(SUM(a.ht), 0) FROM Achat a
+            WHERE a.fournisseur.id = :fournisseurId
+            AND a.dateCommande BETWEEN :debut AND :fin
+            """)
+    BigDecimal sumHtByFournisseurIdEntre(@Param("fournisseurId") UUID fournisseurId,
+                                         @Param("debut") LocalDate debut,
+                                         @Param("fin") LocalDate fin);
+
     // Same outstanding orders valued HT, for the margin formulas that read
     // everything net of tax.
     @Query("""
