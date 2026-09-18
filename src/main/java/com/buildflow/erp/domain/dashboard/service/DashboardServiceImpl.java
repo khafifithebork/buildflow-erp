@@ -125,11 +125,20 @@ public class DashboardServiceImpl implements DashboardService {
         BigDecimal margeNetteComptableHt = round(
                 encaissementsGlobauxHt.subtract(decaissementsGlobauxHt).add(valeurStocksGlobaleHt));
 
-        // Operational flows only: stock is a balance-sheet position, not a
-        // flow, so it is deliberately absent here even though the marge nette
-        // above includes it.
+        // Mêmes décaissements réels que la marge nette, sans les stocks : un
+        // stock est une position de bilan, pas un flux, et cet indicateur ne
+        // lit que les flux.
+        //
+        // Il se calculait sur decaissementsEffetChantierHt — les seules
+        // opérations marquées effet chantier et non effet fiscal. Le client a
+        // tranché autrement : ce qu'il veut lire, c'est tout ce qui est
+        // réellement sorti, achats en HT, paie et caisse à leur montant. Les
+        // deux indicateurs ne diffèrent donc plus que par les stocks.
+        //
+        // decaissementsEffetChantierHt reste calculé : l'export Excel le porte
+        // encore comme colonne à part entière.
         BigDecimal resultatHorsFiscaliteHt = round(
-                encaissementsGlobauxHt.subtract(decaissementsEffetChantierHt));
+                encaissementsGlobauxHt.subtract(decaissementsGlobauxHt));
 
         // Also fully HT. Net salaries carry no TVA, so paieAPayerNet is already
         // a tax-free figure and needs no HT counterpart.
