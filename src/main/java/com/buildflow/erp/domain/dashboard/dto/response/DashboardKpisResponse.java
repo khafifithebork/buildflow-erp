@@ -26,6 +26,16 @@ public record DashboardKpisResponse(
         BigDecimal valeurStocksDepotHt,
         /** Split of the line above: material already posé — incorporated into the works. */
         BigDecimal valeurStocksEnTravauxHt,
+        /**
+         * Le même stock, découpé autrement : par emplacement plutôt que par
+         * disponibilité. Au dépôt = pas encore affecté à un chantier ; sur
+         * chantiers = déjà sorti vers un chantier, posé ou non.
+         *
+         * <p>Purement informatif. Aucune des deux valeurs n'entre dans une
+         * formule — seul valeurStocksGlobaleHt le fait, via la marge nette.
+         */
+        BigDecimal valeurStocksAuDepotHt,
+        BigDecimal valeurStocksSurChantiersHt,
 
         // Flow KPIs — scoped to `month` when provided, all-time otherwise.
         BigDecimal decaissementsCaisseTtc,

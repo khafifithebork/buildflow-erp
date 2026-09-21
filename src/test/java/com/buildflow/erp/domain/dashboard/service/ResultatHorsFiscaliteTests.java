@@ -111,6 +111,24 @@ class ResultatHorsFiscaliteTests {
                 .isEqualByComparingTo(avant.resultatHorsFiscaliteHt().subtract(achat.ht()));
     }
 
+    /**
+     * Les stocks par emplacement sont informatifs : ils n'entrent nulle part.
+     *
+     * <p>Le découpage par emplacement somme au même total que le découpage par
+     * disponibilité — c'est le même stock, lu deux fois. Et la marge nette ne
+     * lit que le global : si l'une des deux ventilations entrait dans une
+     * formule, l'identité stocks de l'autre test tomberait.
+     */
+    @Test
+    void theStockBreakdownsAreInformationalOnly() {
+        DashboardKpisResponse k = dashboardService.getKpis(null);
+
+        assertThat(k.valeurStocksAuDepotHt().add(k.valeurStocksSurChantiersHt()))
+                .isEqualByComparingTo(k.valeurStocksGlobaleHt());
+        assertThat(k.valeurStocksDepotHt().add(k.valeurStocksEnTravauxHt()))
+                .isEqualByComparingTo(k.valeurStocksGlobaleHt());
+    }
+
     /** Une commande non réglée ne sort rien, donc ne bouge pas l'indicateur. */
     @Test
     void anUnsettledOrderDoesNotMoveIt() {

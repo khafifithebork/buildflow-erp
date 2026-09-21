@@ -71,6 +71,13 @@ public class DashboardServiceImpl implements DashboardService {
                 BigDecimal.valueOf(stockArticleRepository.sumValeurStockDispoHt()));
         BigDecimal valeurStocksEnTravauxHt = round(
                 BigDecimal.valueOf(stockArticleRepository.sumValeurStockTravauxHt()));
+        // Le même stock découpé par emplacement. Les deux requêtes existaient
+        // sans jamais sortir du backend. Purement informatif : elles n'entrent
+        // dans aucune formule, seul le global le fait via la marge nette.
+        BigDecimal valeurStocksAuDepotHt = round(
+                BigDecimal.valueOf(stockArticleRepository.sumValeurStockAuDepotHt()));
+        BigDecimal valeurStocksSurChantiersHt = round(
+                BigDecimal.valueOf(stockArticleRepository.sumValeurStockSurChantiersHt()));
 
         // ── Flow KPIs (scoped to `month`, or all-time when absent) ───
         BigDecimal decaissementsCaisseTtc = round(caisseTransactionRepository.sumDebitsBetween(dtStart, dtEnd));
@@ -92,17 +99,26 @@ public class DashboardServiceImpl implements DashboardService {
                 .add(stPayeesTtc)
                 .add(salairesPayeesNet);
 
-        // Same outflows with the tax stripped out. Only achats carry a
-        // separable TVA — caisse debits, sous-traitance payments and net
-        // salaries are recorded as single amounts with no tax breakdown — so
-        // the achats component swaps to HT and the rest passes through
-        // unchanged. That is the whole of the "hors fiscalité" adjustment, and
-        // the difference between the two figures is the recoverable TVA on
-        // settled purchases.
+        // Les mêmes sorties, lues hors taxes. Deux des quatre sources portent
+        // une TVA séparable et basculent en HT ; les deux autres n'en portent
+        // aucune et passent telles quelles :
+        //
+        //   achats          a.ht, la TVA vit à côté sur la ligne
+        //   sous-traitance  au prorata du ratio HT/TTC de chaque contrat
+        //   caisse          dépense d'espèces, pas de facture derrière
+        //   paie            le net à payer ; un salaire ne porte pas de TVA
+        //
+        // La sous-traitance entrait ici à son montant TTC. Le commentaire qui
+        // le justifiait affirmait qu'elle n'avait « pas de ventilation fiscale »
+        // — c'est faux : ContratSousTraitant porte montantHt, tva et montantTtc
+        // depuis toujours. Le total hors taxes était donc gonflé de la TVA
+        // versée aux sous-traitants, ce qui minorait d'autant la marge nette et
+        // le résultat hors fiscalité.
         BigDecimal achatsPayeesHt = round(achatRepository.sumHtPayeesBetween(dateStart, dateEnd));
+        BigDecimal stPayeesHt = round(paiementSousTraitantRepository.sumPayeesHtBetween(dateStart, dateEnd));
         BigDecimal decaissementsGlobauxHt = decaissementsCaisseTtc
                 .add(achatsPayeesHt)
-                .add(stPayeesTtc)
+                .add(stPayeesHt)
                 .add(salairesPayeesNet);
 
         // Outflows retained by the hors-fiscalité reading. The two operational
@@ -160,6 +176,8 @@ public class DashboardServiceImpl implements DashboardService {
                 valeurStocksGlobaleHt,
                 valeurStocksDepotHt,
                 valeurStocksEnTravauxHt,
+                valeurStocksAuDepotHt,
+                valeurStocksSurChantiersHt,
                 decaissementsCaisseTtc,
                 encaissementsGlobauxTtc,
                 decaissementsGlobauxTtc,
