@@ -125,3 +125,6 @@ databaseChangeLog:
   - include:
       file: db/changelog/changes/042-create-demandes-paie-table.sql
       relativeToChangelogFile: false
+  - include:
+      file: db/changelog/changes/043-truncate-operational-data.sql
+      relativeToChangelogFile: false
