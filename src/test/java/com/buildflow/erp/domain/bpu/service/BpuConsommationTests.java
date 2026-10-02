@@ -97,16 +97,22 @@ class BpuConsommationTests {
         assertThat(engage(f)).isEqualByComparingTo(avant.add(new BigDecimal("700.00")));
     }
 
-    /** Non payee, elle ne compte pas — meme seuil que les fiches de paie. */
+    /**
+     * Non reglee, elle compte quand meme : le seuil est l'engagement.
+     *
+     * <p>Le bordereau mesure ce qui est engage contre un budget, pas ce qui est
+     * sorti. Une demande imputee a une ligne engage son montant des sa
+     * soumission — elle n'a d'ailleurs pas d'etat brouillon.
+     */
     @Test
-    void anUnpaidDemandeDePaieDoesNotCount() {
+    void anUnpaidDemandeDePaieCountsToo() {
         Fixture f = newLigne();
         BigDecimal avant = engage(f);
 
         demandePaieService.create(new CreateDemandePaieRequest(
                 "Demande non reglee", "2026-07", f.chantierId, f.ligneId, new BigDecimal("500.00")));
 
-        assertThat(engage(f)).isEqualByComparingTo(avant);
+        assertThat(engage(f)).isEqualByComparingTo(avant.add(new BigDecimal("500.00")));
     }
 
     @Test

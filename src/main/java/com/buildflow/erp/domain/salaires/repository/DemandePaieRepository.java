@@ -24,15 +24,14 @@ public interface DemandePaieRepository extends JpaRepository<DemandePaie, UUID> 
      * fonctionnalite, et personne ne la lisait : le champ etait decoratif et le
      * bordereau sous-estimait d'autant la paie imputee.
      *
-     * <p>Meme seuil que {@code FichePaieRepository.sumMontantEngageByBpuLigneId}
-     * — seules les demandes payees comptent. Les deux documents de paie se
-     * lisent donc pareil ; si ce seuil change un jour, il changera pour les
-     * deux ensemble.
+     * <p>Seuil commun aux quatre sources du bordereau : l'engagement compte des
+     * que le document existe, pas au paiement. Une demande n'a pas d'etat
+     * brouillon — elle entre deja soumise — donc toutes comptent.
      */
     @Query("""
             SELECT COALESCE(SUM(d.montantNet), 0) FROM DemandePaie d
             WHERE d.bpuLigne.id = :bpuLigneId
-            AND d.statut = com.buildflow.erp.domain.salaires.entity.DemandePaieStatut.PAYEE
+
             """)
     BigDecimal sumMontantEngageByBpuLigneId(@Param("bpuLigneId") UUID bpuLigneId);
 }

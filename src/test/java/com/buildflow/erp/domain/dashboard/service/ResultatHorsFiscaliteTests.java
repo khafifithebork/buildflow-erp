@@ -69,7 +69,7 @@ class ResultatHorsFiscaliteTests {
         BigDecimal ecartDecaissements = k.decaissementsGlobauxHt().subtract(k.decaissementsReelsHt());
         BigDecimal ecartStock = k.valeurStocksEffetChantierHt().subtract(k.valeurStocksGlobaleHt());
 
-        assertThat(k.margeNetteComptableHt().subtract(k.resultatHorsFiscaliteHt()))
+        assertThat(k.resultatHorsFiscaliteHt().subtract(k.margeNetteComptableHt()))
                 .isEqualByComparingTo(ecartDecaissements.add(ecartStock));
     }
 
@@ -101,8 +101,8 @@ class ResultatHorsFiscaliteTests {
     void bothReadingsCarryAStockTerm() {
         DashboardKpisResponse k = dashboardService.getKpis(null);
 
-        assertThat(k.resultatHorsFiscaliteHt())
-                .isEqualByComparingTo(k.margeNetteComptableHt()
+        assertThat(k.margeNetteComptableHt())
+                .isEqualByComparingTo(k.resultatHorsFiscaliteHt()
                         .add(k.decaissementsReelsHt()).subtract(k.decaissementsGlobauxHt())
                         .subtract(k.valeurStocksEffetChantierHt()).add(k.valeurStocksGlobaleHt()));
     }
@@ -134,12 +134,12 @@ class ResultatHorsFiscaliteTests {
         assertThat(apres.valeurStocksGlobaleHt())
                 .isEqualByComparingTo(avant.valeurStocksGlobaleHt().add(achat.ht()));
         // Le calcul 2 compte la sortie et l'entree en stock : il ne bouge pas.
-        assertThat(apres.resultatHorsFiscaliteHt())
-                .isEqualByComparingTo(avant.resultatHorsFiscaliteHt());
+        assertThat(apres.margeNetteComptableHt())
+                .isEqualByComparingTo(avant.margeNetteComptableHt());
         // Le calcul 1 ecarte cette sortie — non marquee effet chantier — mais
         // compte le stock entre. Il monte donc du montant HT de la commande.
-        assertThat(apres.margeNetteComptableHt())
-                .isEqualByComparingTo(avant.margeNetteComptableHt().add(achat.ht()));
+        assertThat(apres.resultatHorsFiscaliteHt())
+                .isEqualByComparingTo(avant.resultatHorsFiscaliteHt().add(achat.ht()));
     }
 
     /**
