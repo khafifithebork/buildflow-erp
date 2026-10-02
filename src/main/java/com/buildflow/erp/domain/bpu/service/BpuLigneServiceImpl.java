@@ -11,6 +11,7 @@ import com.buildflow.erp.domain.bpu.mapper.BpuLigneMapper;
 import com.buildflow.erp.domain.bpu.repository.BpuLigneRepository;
 import com.buildflow.erp.domain.referentiel.entity.Chantier;
 import com.buildflow.erp.domain.referentiel.repository.ChantierRepository;
+import com.buildflow.erp.domain.salaires.repository.DemandePaieRepository;
 import com.buildflow.erp.domain.salaires.repository.FichePaieRepository;
 import com.buildflow.erp.domain.soustraitance.repository.ContratSousTraitantRepository;
 import com.buildflow.erp.domain.tresorerie.repository.CaisseTransactionRepository;
@@ -33,6 +34,7 @@ public class BpuLigneServiceImpl implements BpuLigneService {
     private final AchatRepository achatRepository;
     private final CaisseTransactionRepository caisseTransactionRepository;
     private final FichePaieRepository fichePaieRepository;
+    private final DemandePaieRepository demandePaieRepository;
     private final ContratSousTraitantRepository contratSousTraitantRepository;
     private final BpuLigneMapper bpuLigneMapper;
     private final BpuExcelParser bpuExcelParser;
@@ -148,9 +150,13 @@ public class BpuLigneServiceImpl implements BpuLigneService {
         BigDecimal achatsHt = achatRepository.sumMontantEngageByBpuLigneId(ligne.getId());
         BigDecimal caisse = caisseTransactionRepository.sumMontantByBpuLigneId(ligne.getId());
         BigDecimal paie = fichePaieRepository.sumMontantEngageByBpuLigneId(ligne.getId());
+        // Les demandes de paie s'imputent elles aussi a une ligne BPU — le
+        // formulaire le propose depuis le debut — mais rien ne les lisait.
+        BigDecimal demandesPaie = demandePaieRepository.sumMontantEngageByBpuLigneId(ligne.getId());
         BigDecimal sousTraitanceHt = contratSousTraitantRepository.sumMontantEngageByBpuLigneId(ligne.getId());
 
-        BigDecimal montantEngageHt = achatsHt.add(caisse).add(paie).add(sousTraitanceHt);
+        BigDecimal montantEngageHt = achatsHt.add(caisse).add(paie)
+                .add(demandesPaie).add(sousTraitanceHt);
 
         BigDecimal tauxConsommation = ligne.getBudgetPrevuHt().compareTo(BigDecimal.ZERO) > 0
                 ? montantEngageHt.divide(ligne.getBudgetPrevuHt(), 4, RoundingMode.HALF_UP)
