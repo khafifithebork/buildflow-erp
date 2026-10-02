@@ -1,10 +1,15 @@
 package com.buildflow.erp.domain.bpu.service;
 
+import com.buildflow.erp.common.paiement.ModePaiement;
 import com.buildflow.erp.domain.bpu.dto.request.CreateBpuLigneRequest;
 import com.buildflow.erp.domain.bpu.dto.response.BpuLigneResponse;
 import com.buildflow.erp.domain.referentiel.dto.request.CreateChantierRequest;
 import com.buildflow.erp.domain.referentiel.entity.ChantierStatut;
 import com.buildflow.erp.domain.referentiel.service.ChantierService;
+import com.buildflow.erp.domain.salaires.dto.request.CreateDemandePaieRequest;
+import com.buildflow.erp.domain.salaires.dto.request.PayerDemandePaieRequest;
+import com.buildflow.erp.domain.salaires.dto.response.DemandePaieResponse;
+import com.buildflow.erp.domain.salaires.service.DemandePaieService;
 import com.buildflow.erp.domain.tresorerie.dto.request.CreateTransactionRequest;
 import com.buildflow.erp.domain.tresorerie.entity.TypeTransaction;
 import com.buildflow.erp.domain.tresorerie.repository.CaisseRepository;
@@ -38,6 +43,7 @@ class BpuConsommationTests {
     @Autowired BpuLigneService bpuLigneService;
     @Autowired ChantierService chantierService;
     @Autowired TresorerieService tresorerieService;
+    @Autowired DemandePaieService demandePaieService;
     @Autowired CaisseRepository caisseRepository;
 
     private static final AtomicInteger SEQ = new AtomicInteger();
@@ -72,6 +78,35 @@ class BpuConsommationTests {
         depenserEnEspeces(f, "125.50");
 
         assertThat(engage(f)).isEqualByComparingTo("375.50");
+    }
+
+    /**
+     * Une demande de paie payee compte dans la ligne du bordereau.
+     *
+     * <p>Le formulaire laissait choisir une ligne BPU depuis la creation de la
+     * fonctionnalite, et rien ne la lisait : le bordereau sous-estimait d'autant
+     * la paie imputee.
+     */
+    @Test
+    void aPaidDemandeDePaieCountsTowardsTheLine() {
+        Fixture f = newLigne();
+        BigDecimal avant = engage(f);
+
+        payerDemande(f, "700.00");
+
+        assertThat(engage(f)).isEqualByComparingTo(avant.add(new BigDecimal("700.00")));
+    }
+
+    /** Non payee, elle ne compte pas — meme seuil que les fiches de paie. */
+    @Test
+    void anUnpaidDemandeDePaieDoesNotCount() {
+        Fixture f = newLigne();
+        BigDecimal avant = engage(f);
+
+        demandePaieService.create(new CreateDemandePaieRequest(
+                "Demande non reglee", "2026-07", f.chantierId, f.ligneId, new BigDecimal("500.00")));
+
+        assertThat(engage(f)).isEqualByComparingTo(avant);
     }
 
     @Test
@@ -125,6 +160,15 @@ class BpuConsommationTests {
         tresorerieService.enregistrerTransaction(f.caisseId, new CreateTransactionRequest(
                 TypeTransaction.DEBIT, new BigDecimal(montant), "Dépense espèces",
                 null, f.ligneId, null, null));
+    }
+
+    /** Une demande imputee a la ligne, validee puis reglee par virement. */
+    private void payerDemande(Fixture f, String montant) {
+        DemandePaieResponse d = demandePaieService.create(new CreateDemandePaieRequest(
+                "Demande " + SEQ.incrementAndGet(), "2026-07", f.chantierId, f.ligneId,
+                new BigDecimal(montant)));
+        demandePaieService.valider(d.id());
+        demandePaieService.payer(d.id(), new PayerDemandePaieRequest(ModePaiement.VIREMENT));
     }
 
     private BpuLigneResponse ligne(Fixture f) {
