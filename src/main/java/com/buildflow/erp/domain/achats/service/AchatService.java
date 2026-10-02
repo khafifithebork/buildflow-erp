@@ -6,6 +6,7 @@ import com.buildflow.erp.domain.achats.dto.request.CreateAchatRequest;
 import com.buildflow.erp.domain.achats.dto.request.UpdateLignePrixRequest;
 import com.buildflow.erp.domain.achats.dto.response.AchatResponse;
 import java.util.List;
+import java.math.BigDecimal;
 import java.util.UUID;
 
 public interface AchatService {
@@ -15,6 +16,12 @@ public interface AchatService {
     AchatResponse validateBL(UUID id, String bonLivraisonRef);
     AchatResponse validateFacture(UUID id, String factureRef);
     AchatResponse validatePaiement(UUID id, ModePaiement modePaiement);
+
+    /**
+     * Regle une partie de la commande. Le solde bascule en PAYE de lui-meme
+     * quand le cumul regle rejoint le TTC.
+     */
+    AchatResponse reglerPartiellement(UUID id, BigDecimal montant, ModePaiement modePaiement);
     AchatResponse updateIndicateurs(UUID id, UpdateIndicateursRequest request);
 
     /**

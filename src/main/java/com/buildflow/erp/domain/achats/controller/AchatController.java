@@ -6,6 +6,7 @@ import com.buildflow.erp.common.paiement.ModePaiement;
 import com.buildflow.erp.domain.achats.dto.request.CreateAchatRequest;
 import com.buildflow.erp.domain.achats.dto.response.AchatResponse;
 import com.buildflow.erp.domain.achats.dto.request.UpdateLignePrixRequest;
+import com.buildflow.erp.domain.achats.dto.request.ReglerAchatRequest;
 import com.buildflow.erp.domain.achats.service.AchatService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -124,6 +125,19 @@ public class AchatController {
             @RequestBody(required = false) AnnulerPaiementRequest request) {
         return ResponseEntity.ok(ApiResponse.success(achatService.annulerPaiement(
                 id, request == null ? null : request.motif())));
+    }
+
+    /**
+     * Regle une partie de la commande. Le solde bascule en PAYE de lui-meme
+     * quand le cumul regle rejoint le TTC.
+     */
+    @PatchMapping("/{id}/regler")
+    @PreAuthorize("hasAnyRole('ADMIN', 'FINANCE')")
+    public ResponseEntity<ApiResponse<AchatResponse>> regler(
+            @PathVariable UUID id,
+            @Valid @RequestBody ReglerAchatRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(achatService.reglerPartiellement(
+                id, request.montant(), request.modePaiement())));
     }
 
     @PatchMapping("/{id}/validate-paiement")

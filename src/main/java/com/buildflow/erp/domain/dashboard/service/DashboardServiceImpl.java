@@ -1,6 +1,7 @@
 package com.buildflow.erp.domain.dashboard.service;
 
 import com.buildflow.erp.domain.achats.repository.AchatRepository;
+import com.buildflow.erp.domain.achats.repository.PaiementAchatRepository;
 import com.buildflow.erp.domain.attachement.repository.AttachementRepository;
 import com.buildflow.erp.domain.dashboard.dto.response.DashboardKpisResponse;
 import com.buildflow.erp.domain.salaires.repository.FichePaieRepository;
@@ -24,6 +25,7 @@ import java.time.YearMonth;
 public class DashboardServiceImpl implements DashboardService {
 
     private final AchatRepository achatRepository;
+    private final PaiementAchatRepository paiementAchatRepository;
     private final ContratSousTraitantRepository contratSousTraitantRepository;
     private final PaiementSousTraitantRepository paiementSousTraitantRepository;
     private final FichePaieRepository fichePaieRepository;
@@ -93,7 +95,11 @@ public class DashboardServiceImpl implements DashboardService {
         BigDecimal encaissementsGlobauxTtc = round(attachementRepository.sumTtcEncaisseBetween(dtStart, dtEnd));
         BigDecimal encaissementsGlobauxHt = round(attachementRepository.sumHtEncaisseBetween(dtStart, dtEnd));
 
-        BigDecimal achatsPayeesTtc = round(achatRepository.sumTtcPayeesBetween(dateStart, dateEnd));
+        // Les reglements portent desormais leur propre date, lue du registre
+        // paiements_achat. Avant, faute de mieux, la periode se decidait sur
+        // dateCommande — la date a laquelle la commande avait ete passee, pas
+        // celle a laquelle l'argent etait sorti.
+        BigDecimal achatsPayeesTtc = round(paiementAchatRepository.sumPayeesBetween(dateStart, dateEnd));
         BigDecimal stPayeesTtc = round(paiementSousTraitantRepository.sumPayeesBetween(dateStart, dateEnd));
         BigDecimal salairesPayeesNet = round(ym != null
                 ? fichePaieRepository.sumNetAPayerPayeesByPeriode(month)
@@ -123,7 +129,7 @@ public class DashboardServiceImpl implements DashboardService {
         // depuis toujours. Le total hors taxes était donc gonflé de la TVA
         // versée aux sous-traitants, ce qui minorait d'autant la marge nette et
         // le résultat hors fiscalité.
-        BigDecimal achatsPayeesHt = round(achatRepository.sumHtPayeesBetween(dateStart, dateEnd));
+        BigDecimal achatsPayeesHt = round(paiementAchatRepository.sumPayeesHtBetween(dateStart, dateEnd));
         BigDecimal stPayeesHt = round(paiementSousTraitantRepository.sumPayeesHtBetween(dateStart, dateEnd));
         BigDecimal decaissementsGlobauxHt = decaissementsCaisseTtc
                 .add(achatsPayeesHt)
@@ -141,7 +147,7 @@ public class DashboardServiceImpl implements DashboardService {
         // "on ne compte que l'effet chantier" read literally: unmarked is not
         // marked.
         BigDecimal decaissementsEffetChantierHt =
-                round(achatRepository.sumHtPayeesEffetChantierBetween(dateStart, dateEnd))
+                round(paiementAchatRepository.sumPayeesHtEffetChantierBetween(dateStart, dateEnd))
                         .add(round(caisseTransactionRepository
                                 .sumDebitsEffetChantierBetween(dtStart, dtEnd)));
 
