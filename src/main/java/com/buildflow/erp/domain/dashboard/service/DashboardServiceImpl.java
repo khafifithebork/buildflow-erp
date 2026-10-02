@@ -78,6 +78,15 @@ public class DashboardServiceImpl implements DashboardService {
                 BigDecimal.valueOf(stockArticleRepository.sumValeurStockAuDepotHt()));
         BigDecimal valeurStocksSurChantiersHt = round(
                 BigDecimal.valueOf(stockArticleRepository.sumValeurStockSurChantiersHt()));
+        // Le stock de l'effet chantier, celui que retient la marge nette.
+        //
+        // Il vaut le stock global tant que le schema ne permet pas mieux :
+        // mouvements_stock ne porte aucune cle vers l'achat qui l'a cree, donc
+        // rien ne permet d'ecarter le stock n'existant que par l'effet fiscal.
+        // La valeur est volontairement calculee a part plutot qu'en reutilisant
+        // valeurStocksGlobaleHt : le jour ou le lien existe, seule cette ligne
+        // bouge et les deux marges divergent d'elles-memes.
+        BigDecimal valeurStocksEffetChantierHt = valeurStocksGlobaleHt;
 
         // ── Flow KPIs (scoped to `month`, or all-time when absent) ───
         BigDecimal decaissementsCaisseTtc = round(caisseTransactionRepository.sumDebitsBetween(dtStart, dtEnd));
@@ -137,24 +146,37 @@ public class DashboardServiceImpl implements DashboardService {
                                 .sumDebitsEffetChantierBetween(dtStart, dtEnd)));
 
         // ── Margin formulas ───────────────────────────────────────────
-        // Every term HT: the outflows use the tax-free reading rather than TTC.
+        // Calcul 1 — la situation reelle d'exploitation.
+        //
+        //   encaissements reels HT
+        // - decaissements reels HT (achats HT + sous-traitance HT + paie + caisse)
+        // + stock de l'effet chantier
+        //
+        // La paie et la caisse entrent a leur montant : elles ne portent pas de
+        // TVA, il n'y a rien a reconvertir.
         BigDecimal margeNetteComptableHt = round(
-                encaissementsGlobauxHt.subtract(decaissementsGlobauxHt).add(valeurStocksGlobaleHt));
+                encaissementsGlobauxHt.subtract(decaissementsGlobauxHt)
+                        .add(valeurStocksEffetChantierHt));
 
-        // Mêmes décaissements réels que la marge nette, sans les stocks : un
-        // stock est une position de bilan, pas un flux, et cet indicateur ne
-        // lit que les flux.
+        // Calcul 2 — la lecture globale.
         //
-        // Il se calculait sur decaissementsEffetChantierHt — les seules
-        // opérations marquées effet chantier et non effet fiscal. Le client a
-        // tranché autrement : ce qu'il veut lire, c'est tout ce qui est
-        // réellement sorti, achats en HT, paie et caisse à leur montant. Les
-        // deux indicateurs ne diffèrent donc plus que par les stocks.
+        //   encaissements reels HT - decaissement global + stock global
         //
-        // decaissementsEffetChantierHt reste calculé : l'export Excel le porte
-        // encore comme colonne à part entière.
+        // Memes decaissements que le calcul 1 : tout ce qui est reellement
+        // sorti, effet chantier comme effet fiscal, sans filtre de drapeau.
+        // Ce qui le separe du calcul 1, c'est le perimetre du stock — global
+        // ici, limite a l'effet chantier la-bas.
+        //
+        // Les deux indicateurs rendent donc le meme montant tant que le stock
+        // de l'effet chantier ne peut pas etre isole. C'est assume : la
+        // structure est en place, et ils divergeront d'eux-memes le jour ou
+        // mouvements_stock portera une cle vers son achat.
+        //
+        // decaissementsEffetChantierHt reste calcule : l'export Excel le porte
+        // encore comme colonne a part entiere.
         BigDecimal resultatHorsFiscaliteHt = round(
-                encaissementsGlobauxHt.subtract(decaissementsGlobauxHt));
+                encaissementsGlobauxHt.subtract(decaissementsGlobauxHt)
+                        .add(valeurStocksGlobaleHt));
 
         // Also fully HT. Net salaries carry no TVA, so paieAPayerNet is already
         // a tax-free figure and needs no HT counterpart.
@@ -178,6 +200,7 @@ public class DashboardServiceImpl implements DashboardService {
                 valeurStocksEnTravauxHt,
                 valeurStocksAuDepotHt,
                 valeurStocksSurChantiersHt,
+                valeurStocksEffetChantierHt,
                 decaissementsCaisseTtc,
                 encaissementsGlobauxTtc,
                 decaissementsGlobauxTtc,

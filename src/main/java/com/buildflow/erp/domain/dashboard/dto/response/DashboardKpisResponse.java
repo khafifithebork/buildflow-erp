@@ -36,6 +36,20 @@ public record DashboardKpisResponse(
          */
         BigDecimal valeurStocksAuDepotHt,
         BigDecimal valeurStocksSurChantiersHt,
+        /**
+         * Le stock retenu par la marge nette comptable : celui qui releve de
+         * l'effet chantier, hors montants n'existant que par l'effet fiscal.
+         *
+         * <p>Egal au stock global pour l'instant, et c'est une limite connue,
+         * pas un choix : {@code mouvements_stock} ne porte aucune cle vers
+         * l'achat qui l'a cree, seulement une reference en texte libre. Tant
+         * que ce lien n'existe pas, aucun stock ne peut etre rattache a un
+         * achat porteur du drapeau fiscal.
+         *
+         * <p>Le champ existe quand meme separement : le jour ou le lien est
+         * pose, seule la requete change, pas les formules.
+         */
+        BigDecimal valeurStocksEffetChantierHt,
 
         // Flow KPIs — scoped to `month` when provided, all-time otherwise.
         BigDecimal decaissementsCaisseTtc,
