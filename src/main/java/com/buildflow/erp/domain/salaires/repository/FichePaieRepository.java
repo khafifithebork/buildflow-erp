@@ -24,7 +24,7 @@ public interface FichePaieRepository extends JpaRepository<FichePaie, UUID> {
     @Query("""
             SELECT COALESCE(SUM(f.netAPayer), 0) FROM FichePaie f
             WHERE f.bpuLigne.id = :bpuLigneId
-            AND f.statut = com.buildflow.erp.domain.salaires.entity.FichePaieStatut.PAYEE
+            AND f.statut <> com.buildflow.erp.domain.salaires.entity.FichePaieStatut.BROUILLON
             """)
     BigDecimal sumMontantEngageByBpuLigneId(@Param("bpuLigneId") UUID bpuLigneId);
 

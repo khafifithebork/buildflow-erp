@@ -15,9 +15,12 @@ public interface ContratSousTraitantRepository extends JpaRepository<ContratSous
     long countByChantierId(UUID chantierId);
     List<ContratSousTraitant> findBySousTraitantId(UUID sousTraitantId);
 
+    // Seuil commun aux quatre sources du bordereau : l'engagement compte des que
+    // le document existe, pas au paiement. Un contrat signe engage son montant,
+    // les contrats resilies exceptes.
+    //
     // NOTE: the backend has no "travaux réalisés" (validated field work) tracking yet,
-    // so the full contracted HT amount is treated as "engaged" spend once a contract
-    // is imputed to a BPU line, excluding cancelled (RESILIE) contracts.
+    // so the full contracted HT amount is treated as "engaged" spend.
     @Query("""
             SELECT COALESCE(SUM(c.montantHt), 0) FROM ContratSousTraitant c
             WHERE c.bpuLigne.id = :bpuLigneId

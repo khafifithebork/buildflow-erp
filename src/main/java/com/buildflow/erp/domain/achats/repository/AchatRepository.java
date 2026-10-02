@@ -15,10 +15,17 @@ public interface AchatRepository extends JpaRepository<Achat, UUID> {
 
     long countByChantierId(UUID chantierId);
 
+    /**
+     * Ce qu'une ligne du bordereau a consomme en achats.
+     *
+     * <p>Seuil commun aux quatre sources : l'engagement compte des que le
+     * document existe, pas au paiement. Une commande passee engage son
+     * montant, meme pas encore livree.
+     */
     @Query("""
             SELECT COALESCE(SUM(l.total), 0) FROM LigneAchat l
             WHERE l.bpuLigne.id = :bpuLigneId
-            AND l.achat.statut IN ('LIVRE', 'FACTURE', 'PAYE')
+            AND l.achat.statut IN ('EN_COURS', 'LIVRE', 'FACTURE', 'PAYE')
             """)
     BigDecimal sumMontantEngageByBpuLigneId(@Param("bpuLigneId") UUID bpuLigneId);
 
