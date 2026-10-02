@@ -154,6 +154,10 @@ public class DashboardServiceImpl implements DashboardService {
         // ── Margin formulas ───────────────────────────────────────────
         // Calcul 1 — la situation reelle d'exploitation, hors effet fiscal.
         //
+        // C'est lui qui porte le nom « resultat hors fiscalite » : il ecarte
+        // l'effet fiscal, ce que le nom annonce. Les deux etaient intervertis
+        // jusqu'ici — « hors fiscalite » designait le calcul global.
+        //
         //   encaissements reels HT - decaissements reels HT + stock effet chantier
         //
         // « Hors effet fiscal la ou c'est requis » : seuls les achats et la
@@ -165,7 +169,7 @@ public class DashboardServiceImpl implements DashboardService {
                 .add(stPayeesHt)
                 .add(salairesPayeesNet);
 
-        BigDecimal margeNetteComptableHt = round(
+        BigDecimal resultatHorsFiscaliteHt = round(
                 encaissementsGlobauxHt.subtract(decaissementsReelsHt)
                         .add(valeurStocksEffetChantierHt));
 
@@ -173,9 +177,11 @@ public class DashboardServiceImpl implements DashboardService {
         //
         //   encaissements reels HT - decaissement global + stock global
         //
-        // Decaissement global : tout ce qui est reellement sorti, effet
-        // chantier comme effet fiscal, sans filtre de drapeau. C'est la
-        // difference de fond avec le calcul 1, qui lui ecarte l'effet fiscal.
+        // Calcul 2 — la situation globale, effet fiscal compris.
+        //
+        // « Comptable » au sens ou rien n'est ecarte : tout ce qui est
+        // reellement sorti, effet chantier comme effet fiscal, sans filtre de
+        // drapeau. C'est la difference de fond avec le calcul 1.
         //
         // Les deux indicateurs different donc par deux choses a la fois : le
         // perimetre des decaissements, et celui du stock. Le second reste
@@ -184,7 +190,7 @@ public class DashboardServiceImpl implements DashboardService {
         //
         // decaissementsEffetChantierHt reste calcule : l'export Excel le porte
         // encore comme colonne a part entiere.
-        BigDecimal resultatHorsFiscaliteHt = round(
+        BigDecimal margeNetteComptableHt = round(
                 encaissementsGlobauxHt.subtract(decaissementsGlobauxHt)
                         .add(valeurStocksGlobaleHt));
 

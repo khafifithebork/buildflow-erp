@@ -72,9 +72,22 @@ public record DashboardKpisResponse(
          */
         BigDecimal decaissementsReelsHt,
 
-        // Margin formulas.
+        // Les deux lectures du resultat. Elles different par le perimetre des
+        // decaissements — l'une ecarte l'effet fiscal, l'autre non — et par
+        // celui du stock.
+        /**
+         * Calcul 2 : la situation globale, effet fiscal compris.
+         *
+         * <p>encaissements reels HT - decaissement global HT + stock global.
+         */
         BigDecimal margeNetteComptableHt,
-        /** The margin read entirely on HT — no TVA on either side. */
+        /**
+         * Calcul 1 : la situation reelle d'exploitation, hors effet fiscal.
+         *
+         * <p>encaissements reels HT - decaissements reels HT + stock effet
+         * chantier. Les deux noms etaient intervertis jusqu'ici : « hors
+         * fiscalite » designait le calcul qui inclut l'effet fiscal.
+         */
         BigDecimal resultatHorsFiscaliteHt,
         BigDecimal margeEnCoursPrevisionnelleHt
 ) {}
