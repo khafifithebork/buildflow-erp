@@ -152,31 +152,35 @@ public class DashboardServiceImpl implements DashboardService {
                                 .sumDebitsEffetChantierBetween(dtStart, dtEnd)));
 
         // ── Margin formulas ───────────────────────────────────────────
-        // Calcul 1 — la situation reelle d'exploitation.
+        // Calcul 1 — la situation reelle d'exploitation, hors effet fiscal.
         //
-        //   encaissements reels HT
-        // - decaissements reels HT (achats HT + sous-traitance HT + paie + caisse)
-        // + stock de l'effet chantier
+        //   encaissements reels HT - decaissements reels HT + stock effet chantier
         //
-        // La paie et la caisse entrent a leur montant : elles ne portent pas de
-        // TVA, il n'y a rien a reconvertir.
+        // « Hors effet fiscal la ou c'est requis » : seuls les achats et la
+        // caisse portent les deux drapeaux, donc eux seuls se filtrent. La
+        // sous-traitance et la paie n'en portent aucun — il n'y a rien a en
+        // exclure, elles entrent entieres. La paie et la caisse restent a leur
+        // montant, faute de TVA a reconvertir.
+        BigDecimal decaissementsReelsHt = decaissementsEffetChantierHt
+                .add(stPayeesHt)
+                .add(salairesPayeesNet);
+
         BigDecimal margeNetteComptableHt = round(
-                encaissementsGlobauxHt.subtract(decaissementsGlobauxHt)
+                encaissementsGlobauxHt.subtract(decaissementsReelsHt)
                         .add(valeurStocksEffetChantierHt));
 
         // Calcul 2 — la lecture globale.
         //
         //   encaissements reels HT - decaissement global + stock global
         //
-        // Memes decaissements que le calcul 1 : tout ce qui est reellement
-        // sorti, effet chantier comme effet fiscal, sans filtre de drapeau.
-        // Ce qui le separe du calcul 1, c'est le perimetre du stock — global
-        // ici, limite a l'effet chantier la-bas.
+        // Decaissement global : tout ce qui est reellement sorti, effet
+        // chantier comme effet fiscal, sans filtre de drapeau. C'est la
+        // difference de fond avec le calcul 1, qui lui ecarte l'effet fiscal.
         //
-        // Les deux indicateurs rendent donc le meme montant tant que le stock
-        // de l'effet chantier ne peut pas etre isole. C'est assume : la
-        // structure est en place, et ils divergeront d'eux-memes le jour ou
-        // mouvements_stock portera une cle vers son achat.
+        // Les deux indicateurs different donc par deux choses a la fois : le
+        // perimetre des decaissements, et celui du stock. Le second reste
+        // theorique tant que mouvements_stock ne porte pas de cle vers son
+        // achat ; le premier, lui, joue des aujourd'hui.
         //
         // decaissementsEffetChantierHt reste calcule : l'export Excel le porte
         // encore comme colonne a part entiere.
@@ -212,6 +216,7 @@ public class DashboardServiceImpl implements DashboardService {
                 decaissementsGlobauxTtc,
                 decaissementsGlobauxHt,
                 decaissementsEffetChantierHt,
+                decaissementsReelsHt,
                 margeNetteComptableHt,
                 resultatHorsFiscaliteHt,
                 margeEnCoursPrevisionnelleHt);
