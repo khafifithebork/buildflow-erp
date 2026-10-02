@@ -50,6 +50,17 @@ public class Achat extends BaseEntity {
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal ttc = BigDecimal.ZERO;
 
+    /**
+     * Le cumul deja regle, TTC. Meme role que
+     * {@code ContratSousTraitant.montantPaye}.
+     *
+     * <p>La dette d'une commande vaut {@code ttc - montantPaye}. Le statut PAYE
+     * ne se pose que lorsque les deux se rejoignent : regler une partie laisse
+     * la commande en FACTURE avec un reste a payer.
+     */
+    @Column(name = "montant_paye", nullable = false, precision = 15, scale = 2)
+    private BigDecimal montantPaye = BigDecimal.ZERO;
+
     @Column(name = "bon_livraison_ref", length = 50)
     private String bonLivraisonRef;
 

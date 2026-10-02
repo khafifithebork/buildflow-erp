@@ -1,6 +1,7 @@
 package com.buildflow.erp.domain.dashboard.service;
 
 import com.buildflow.erp.domain.achats.repository.AchatRepository;
+import com.buildflow.erp.domain.achats.repository.PaiementAchatRepository;
 import com.buildflow.erp.domain.attachement.repository.AttachementRepository;
 import com.buildflow.erp.domain.dashboard.dto.response.DashboardKpisResponse;
 import com.buildflow.erp.domain.salaires.repository.FichePaieRepository;
@@ -24,6 +25,7 @@ import java.time.YearMonth;
 public class DashboardServiceImpl implements DashboardService {
 
     private final AchatRepository achatRepository;
+    private final PaiementAchatRepository paiementAchatRepository;
     private final ContratSousTraitantRepository contratSousTraitantRepository;
     private final PaiementSousTraitantRepository paiementSousTraitantRepository;
     private final FichePaieRepository fichePaieRepository;
@@ -93,7 +95,11 @@ public class DashboardServiceImpl implements DashboardService {
         BigDecimal encaissementsGlobauxTtc = round(attachementRepository.sumTtcEncaisseBetween(dtStart, dtEnd));
         BigDecimal encaissementsGlobauxHt = round(attachementRepository.sumHtEncaisseBetween(dtStart, dtEnd));
 
-        BigDecimal achatsPayeesTtc = round(achatRepository.sumTtcPayeesBetween(dateStart, dateEnd));
+        // Les reglements portent desormais leur propre date, lue du registre
+        // paiements_achat. Avant, faute de mieux, la periode se decidait sur
+        // dateCommande — la date a laquelle la commande avait ete passee, pas
+        // celle a laquelle l'argent etait sorti.
+        BigDecimal achatsPayeesTtc = round(paiementAchatRepository.sumPayeesBetween(dateStart, dateEnd));
         BigDecimal stPayeesTtc = round(paiementSousTraitantRepository.sumPayeesBetween(dateStart, dateEnd));
         BigDecimal salairesPayeesNet = round(ym != null
                 ? fichePaieRepository.sumNetAPayerPayeesByPeriode(month)
@@ -123,7 +129,7 @@ public class DashboardServiceImpl implements DashboardService {
         // depuis toujours. Le total hors taxes était donc gonflé de la TVA
         // versée aux sous-traitants, ce qui minorait d'autant la marge nette et
         // le résultat hors fiscalité.
-        BigDecimal achatsPayeesHt = round(achatRepository.sumHtPayeesBetween(dateStart, dateEnd));
+        BigDecimal achatsPayeesHt = round(paiementAchatRepository.sumPayeesHtBetween(dateStart, dateEnd));
         BigDecimal stPayeesHt = round(paiementSousTraitantRepository.sumPayeesHtBetween(dateStart, dateEnd));
         BigDecimal decaissementsGlobauxHt = decaissementsCaisseTtc
                 .add(achatsPayeesHt)
@@ -141,36 +147,40 @@ public class DashboardServiceImpl implements DashboardService {
         // "on ne compte que l'effet chantier" read literally: unmarked is not
         // marked.
         BigDecimal decaissementsEffetChantierHt =
-                round(achatRepository.sumHtPayeesEffetChantierBetween(dateStart, dateEnd))
+                round(paiementAchatRepository.sumPayeesHtEffetChantierBetween(dateStart, dateEnd))
                         .add(round(caisseTransactionRepository
                                 .sumDebitsEffetChantierBetween(dtStart, dtEnd)));
 
         // ── Margin formulas ───────────────────────────────────────────
-        // Calcul 1 — la situation reelle d'exploitation.
+        // Calcul 1 — la situation reelle d'exploitation, hors effet fiscal.
         //
-        //   encaissements reels HT
-        // - decaissements reels HT (achats HT + sous-traitance HT + paie + caisse)
-        // + stock de l'effet chantier
+        //   encaissements reels HT - decaissements reels HT + stock effet chantier
         //
-        // La paie et la caisse entrent a leur montant : elles ne portent pas de
-        // TVA, il n'y a rien a reconvertir.
+        // « Hors effet fiscal la ou c'est requis » : seuls les achats et la
+        // caisse portent les deux drapeaux, donc eux seuls se filtrent. La
+        // sous-traitance et la paie n'en portent aucun — il n'y a rien a en
+        // exclure, elles entrent entieres. La paie et la caisse restent a leur
+        // montant, faute de TVA a reconvertir.
+        BigDecimal decaissementsReelsHt = decaissementsEffetChantierHt
+                .add(stPayeesHt)
+                .add(salairesPayeesNet);
+
         BigDecimal margeNetteComptableHt = round(
-                encaissementsGlobauxHt.subtract(decaissementsGlobauxHt)
+                encaissementsGlobauxHt.subtract(decaissementsReelsHt)
                         .add(valeurStocksEffetChantierHt));
 
         // Calcul 2 — la lecture globale.
         //
         //   encaissements reels HT - decaissement global + stock global
         //
-        // Memes decaissements que le calcul 1 : tout ce qui est reellement
-        // sorti, effet chantier comme effet fiscal, sans filtre de drapeau.
-        // Ce qui le separe du calcul 1, c'est le perimetre du stock — global
-        // ici, limite a l'effet chantier la-bas.
+        // Decaissement global : tout ce qui est reellement sorti, effet
+        // chantier comme effet fiscal, sans filtre de drapeau. C'est la
+        // difference de fond avec le calcul 1, qui lui ecarte l'effet fiscal.
         //
-        // Les deux indicateurs rendent donc le meme montant tant que le stock
-        // de l'effet chantier ne peut pas etre isole. C'est assume : la
-        // structure est en place, et ils divergeront d'eux-memes le jour ou
-        // mouvements_stock portera une cle vers son achat.
+        // Les deux indicateurs different donc par deux choses a la fois : le
+        // perimetre des decaissements, et celui du stock. Le second reste
+        // theorique tant que mouvements_stock ne porte pas de cle vers son
+        // achat ; le premier, lui, joue des aujourd'hui.
         //
         // decaissementsEffetChantierHt reste calcule : l'export Excel le porte
         // encore comme colonne a part entiere.
@@ -206,6 +216,7 @@ public class DashboardServiceImpl implements DashboardService {
                 decaissementsGlobauxTtc,
                 decaissementsGlobauxHt,
                 decaissementsEffetChantierHt,
+                decaissementsReelsHt,
                 margeNetteComptableHt,
                 resultatHorsFiscaliteHt,
                 margeEnCoursPrevisionnelleHt);

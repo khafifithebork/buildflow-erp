@@ -62,6 +62,15 @@ public record DashboardKpisResponse(
          * effet chantier and not effet fiscal.
          */
         BigDecimal decaissementsEffetChantierHt,
+        /**
+         * Les decaissements reels du calcul 1 : le perimetre effet chantier
+         * pour les achats et la caisse, qui portent les drapeaux, plus la
+         * sous-traitance et la paie entieres, qui n'en portent aucun.
+         *
+         * <p>Distinct de {@code decaissementsGlobauxHt}, qui ne filtre rien :
+         * l'ecart entre les deux vaut les sorties a effet fiscal.
+         */
+        BigDecimal decaissementsReelsHt,
 
         // Margin formulas.
         BigDecimal margeNetteComptableHt,

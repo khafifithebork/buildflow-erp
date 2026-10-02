@@ -28,6 +28,7 @@ public enum CodeSequence {
     ACHAT("ACH", Reset.YEARLY),
     CONTRAT_SOUS_TRAITANT("CST", Reset.YEARLY),
     PAIEMENT_SOUS_TRAITANT("PAI", Reset.YEARLY),
+    PAIEMENT_ACHAT("PAC", Reset.YEARLY),
     ATTACHEMENT("ATT", Reset.YEARLY),
 
     // ── Caller supplies the discriminator ───────────────────────────────

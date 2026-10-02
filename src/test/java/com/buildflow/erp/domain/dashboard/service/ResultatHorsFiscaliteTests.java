@@ -56,51 +56,55 @@ class ResultatHorsFiscaliteTests {
     private static final AtomicInteger SEQ = new AtomicInteger();
 
     /**
-     * Ce qui separe les deux marges, c'est le perimetre du stock.
+     * Ce qui separe les deux marges, maintenant : deux choses a la fois.
      *
-     * <p>Les deux lisent les memes decaissements reels ; l'une ajoute le stock
-     * de l'effet chantier, l'autre le stock global. L'ecart entre les deux
-     * marges vaut donc exactement l'ecart entre les deux stocks, quel que soit
-     * le jeu de donnees.
-     *
-     * <p>Passer par cette identite plutot que par
-     * {@code encaissements - decaissements} en direct : le DTO n'expose que les
-     * encaissements TTC, la version HT reste interne au calcul.
+     * <p>Le perimetre des decaissements — le calcul 1 ecarte l'effet fiscal,
+     * le calcul 2 non — et le perimetre du stock. L'ecart total vaut donc la
+     * somme des deux ecarts, quel que soit le jeu de donnees.
      */
     @Test
-    void theStockScopeIsWhatSeparatesTheTwoMargins() {
+    void theTwoMarginsDifferByDisbursementScopeAndStockScope() {
         DashboardKpisResponse k = dashboardService.getKpis(null);
 
+        BigDecimal ecartDecaissements = k.decaissementsGlobauxHt().subtract(k.decaissementsReelsHt());
+        BigDecimal ecartStock = k.valeurStocksEffetChantierHt().subtract(k.valeurStocksGlobaleHt());
+
         assertThat(k.margeNetteComptableHt().subtract(k.resultatHorsFiscaliteHt()))
-                .isEqualByComparingTo(
-                        k.valeurStocksEffetChantierHt().subtract(k.valeurStocksGlobaleHt()));
+                .isEqualByComparingTo(ecartDecaissements.add(ecartStock));
+    }
+
+    /** Le calcul 1 ecarte bien l'effet fiscal : son perimetre est plus etroit. */
+    @Test
+    void theRealReadingNeverExceedsTheGlobalOne() {
+        DashboardKpisResponse k = dashboardService.getKpis(null);
+
+        assertThat(k.decaissementsReelsHt()).isLessThanOrEqualTo(k.decaissementsGlobauxHt());
     }
 
     /**
-     * Tant que le stock ne peut pas etre rattache a un achat, le stock de
-     * l'effet chantier vaut le stock global et les deux marges coincident.
+     * Le stock de l'effet chantier vaut encore le stock global.
      *
-     * <p>Ce test fige une limite connue, pas une regle metier. Il tombera le
-     * jour ou mouvements_stock portera une cle vers son achat — et ce jour-la
-     * il faudra le remplacer, pas le reparer.
+     * <p>Ce test fige une limite connue, pas une regle metier : rien ne permet
+     * de rattacher un mouvement de stock a l'achat qui l'a cree. Il tombera le
+     * jour ou ce lien existera — et ce jour-la il faudra le remplacer, pas le
+     * reparer.
      */
     @Test
     void chantierStockStillEqualsGlobalStockForNow() {
         DashboardKpisResponse k = dashboardService.getKpis(null);
 
         assertThat(k.valeurStocksEffetChantierHt()).isEqualByComparingTo(k.valeurStocksGlobaleHt());
-        assertThat(k.margeNetteComptableHt()).isEqualByComparingTo(k.resultatHorsFiscaliteHt());
     }
 
-    /** Le calcul 2 porte bien un terme de stock : il n'en avait aucun avant. */
+    /** Les deux calculs portent bien chacun un terme de stock. */
     @Test
-    void theGlobalReadingCarriesAStockTerm() {
+    void bothReadingsCarryAStockTerm() {
         DashboardKpisResponse k = dashboardService.getKpis(null);
 
         assertThat(k.resultatHorsFiscaliteHt())
                 .isEqualByComparingTo(k.margeNetteComptableHt()
-                        .subtract(k.valeurStocksEffetChantierHt())
-                        .add(k.valeurStocksGlobaleHt()));
+                        .add(k.decaissementsReelsHt()).subtract(k.decaissementsGlobauxHt())
+                        .subtract(k.valeurStocksEffetChantierHt()).add(k.valeurStocksGlobaleHt()));
     }
 
     /**
@@ -129,10 +133,13 @@ class ResultatHorsFiscaliteTests {
         // ...et le stock aussi, donc les deux marges restent ou elles etaient.
         assertThat(apres.valeurStocksGlobaleHt())
                 .isEqualByComparingTo(avant.valeurStocksGlobaleHt().add(achat.ht()));
-        assertThat(apres.margeNetteComptableHt())
-                .isEqualByComparingTo(avant.margeNetteComptableHt());
+        // Le calcul 2 compte la sortie et l'entree en stock : il ne bouge pas.
         assertThat(apres.resultatHorsFiscaliteHt())
                 .isEqualByComparingTo(avant.resultatHorsFiscaliteHt());
+        // Le calcul 1 ecarte cette sortie — non marquee effet chantier — mais
+        // compte le stock entre. Il monte donc du montant HT de la commande.
+        assertThat(apres.margeNetteComptableHt())
+                .isEqualByComparingTo(avant.margeNetteComptableHt().add(achat.ht()));
     }
 
     /**

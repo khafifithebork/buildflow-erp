@@ -18,6 +18,8 @@ public record AchatResponse(
         BigDecimal ht,
         BigDecimal tva,
         BigDecimal ttc,
+        /** Le cumul deja regle sur cette commande, TTC. */
+        BigDecimal montantPaye,
         List<LigneAchatResponse> lignes,
         String bonLivraisonRef,
         String factureRef,

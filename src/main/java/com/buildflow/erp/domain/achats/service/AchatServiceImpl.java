@@ -16,8 +16,10 @@ import com.buildflow.erp.domain.achats.dto.response.AchatResponse;
 import com.buildflow.erp.domain.achats.entity.Achat;
 import com.buildflow.erp.domain.achats.entity.AchatStatut;
 import com.buildflow.erp.domain.achats.entity.LigneAchat;
+import com.buildflow.erp.domain.achats.entity.PaiementAchat;
 import com.buildflow.erp.domain.achats.mapper.AchatMapper;
 import com.buildflow.erp.domain.achats.repository.AchatRepository;
+import com.buildflow.erp.domain.achats.repository.PaiementAchatRepository;
 import com.buildflow.erp.domain.bpu.entity.BpuLigne;
 import com.buildflow.erp.domain.bpu.repository.BpuLigneRepository;
 import com.buildflow.erp.domain.referentiel.entity.Article;
@@ -33,6 +35,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.math.RoundingMode;
 import java.util.List;
 import java.util.UUID;
@@ -42,6 +45,7 @@ import java.util.UUID;
 public class AchatServiceImpl implements AchatService {
 
     private final AchatRepository achatRepository;
+    private final PaiementAchatRepository paiementAchatRepository;
     private final FournisseurRepository fournisseurRepository;
     private final ChantierRepository chantierRepository;
     private final ArticleRepository articleRepository;
@@ -155,20 +159,57 @@ public class AchatServiceImpl implements AchatService {
     @Transactional
     public AchatResponse validatePaiement(UUID id, ModePaiement modePaiement) {
         Achat achat = findEntityById(id);
+        // Solder, c'est regler ce qui reste. Le chemin est le meme que pour un
+        // reglement partiel, pour qu'une commande soldee en une fois laisse la
+        // meme trace datee qu'une commande soldee en trois.
+        return reglerPartiellement(id, achat.getTtc().subtract(achat.getMontantPaye()), modePaiement);
+    }
+
+    @Override
+    @Transactional
+    public AchatResponse reglerPartiellement(UUID id, BigDecimal montant, ModePaiement modePaiement) {
+        Achat achat = findEntityById(id);
         assertStatus(achat, AchatStatut.FACTURE, "PAYE");
 
-        achat.setStatut(AchatStatut.PAYE);
-        achat.setModePaiement(modePaiement);
-        modePaiementAudit.record(TypeDocumentPaiement.ACHAT, achat.getId(),
-                achat.getRef(), null, modePaiement);
+        BigDecimal reste = achat.getTtc().subtract(achat.getMontantPaye());
+        if (montant == null || montant.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessRuleException("Le montant regle doit etre superieur a 0.");
+        }
+        if (montant.compareTo(reste) > 0) {
+            throw new BusinessRuleException(String.format(
+                    "Reglement de %s superieur au reste a payer (%s) sur la commande %s.",
+                    montant, reste, achat.getRef()));
+        }
 
-        // CROSS-DOMAIN SIDE EFFECT: only cash settles out of the caisse. A
-        // virement, cheque or effet clears through the bank and must leave the
-        // chantier's cash balance untouched.
+        // Le registre porte la date : c'est lui qui classe la sortie dans une
+        // periode de decaissement, pas le cumul sur la commande.
+        PaiementAchat paiement = new PaiementAchat();
+        paiement.setReference(codeGenerator.next(CodeSequence.PAIEMENT_ACHAT));
+        paiement.setAchat(achat);
+        paiement.setMontant(montant);
+        paiement.setDatePaiement(LocalDate.now());
+        paiement.setModePaiement(modePaiement);
+        paiementAchatRepository.save(paiement);
+
+        ModePaiement ancien = achat.getModePaiement();
+        achat.setMontantPaye(achat.getMontantPaye().add(montant));
+        achat.setModePaiement(modePaiement);
+
+        // PAYE ne se pose qu'au solde complet : un reglement partiel laisse la
+        // commande en FACTURE, avec un reste a payer qui reste une dette.
+        boolean solde = achat.getMontantPaye().compareTo(achat.getTtc()) >= 0;
+        if (solde) {
+            achat.setStatut(AchatStatut.PAYE);
+        }
+        modePaiementAudit.record(TypeDocumentPaiement.ACHAT, achat.getId(),
+                achat.getRef(), ancien, modePaiement);
+
+        // CROSS-DOMAIN SIDE EFFECT: seul l'argent liquide sort de la caisse, et
+        // il n'en sort que le montant de ce reglement — pas le TTC entier.
         if (modePaiement == ModePaiement.CAISSE) {
             tresorerieService.debiterPourDocument(
                     achat.getChantier().getId(), TypeDocumentPaiement.ACHAT,
-                    achat.getId(), achat.getTtc(), achat.getRef(),
+                    achat.getId(), montant, achat.getRef(),
                     achat.isImpactAnalytiqueChantier(), achat.isImpactComptableFiscal());
         }
 
@@ -203,6 +244,11 @@ public class AchatServiceImpl implements AchatService {
 
         achat.setStatut(AchatStatut.FACTURE);
         achat.setModePaiement(null);
+        // Annuler le paiement, c'est annuler tous les reglements : le cumul
+        // repart a zero et le registre avec lui, sans quoi la commande
+        // paraitrait soldee tout en etant repassee en FACTURE.
+        achat.setMontantPaye(BigDecimal.ZERO);
+        paiementAchatRepository.deleteByAchatId(achat.getId());
         modePaiementAudit.record(TypeDocumentPaiement.ACHAT, achat.getId(),
                 achat.getRef(), modeAnnule, null);
 

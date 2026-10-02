@@ -24,8 +24,8 @@ public interface AchatRepository extends JpaRepository<Achat, UUID> {
 
     // Dettes fournisseurs: unpaid orders, as of now (not period-scoped).
     @Query("""
-            SELECT COALESCE(SUM(a.ttc), 0) FROM Achat a
-            WHERE a.statut <> com.buildflow.erp.domain.achats.entity.AchatStatut.PAYE
+            SELECT COALESCE(SUM(a.ttc - a.montantPaye), 0) FROM Achat a
+            WHERE a.montantPaye < a.ttc
             """)
     BigDecimal sumTtcNonPayees();
 
@@ -34,8 +34,7 @@ public interface AchatRepository extends JpaRepository<Achat, UUID> {
     // période — la carte lit un cumul, pas un flux, et dette + déjà payé doit
     // redonner le total commandé.
     @Query("""
-            SELECT COALESCE(SUM(a.ttc), 0) FROM Achat a
-            WHERE a.statut = com.buildflow.erp.domain.achats.entity.AchatStatut.PAYE
+            SELECT COALESCE(SUM(a.montantPaye), 0) FROM Achat a
             """)
     BigDecimal sumTtcPayees();
 
@@ -46,16 +45,16 @@ public interface AchatRepository extends JpaRepository<Achat, UUID> {
     // Une seule requête groupée plutôt qu'un appel par fournisseur — la liste
     // en compte une centaine et le N+1 se paierait à chaque chargement de page.
     @Query("""
-            SELECT a.fournisseur.id, COALESCE(SUM(a.ttc), 0) FROM Achat a
-            WHERE a.statut <> com.buildflow.erp.domain.achats.entity.AchatStatut.PAYE
+            SELECT a.fournisseur.id, COALESCE(SUM(a.ttc - a.montantPaye), 0) FROM Achat a
+            WHERE a.montantPaye < a.ttc
             GROUP BY a.fournisseur.id
             """)
     List<Object[]> sumTtcNonPayeesParFournisseur();
 
     @Query("""
-            SELECT COALESCE(SUM(a.ttc), 0) FROM Achat a
+            SELECT COALESCE(SUM(a.ttc - a.montantPaye), 0) FROM Achat a
             WHERE a.fournisseur.id = :fournisseurId
-            AND a.statut <> com.buildflow.erp.domain.achats.entity.AchatStatut.PAYE
+            AND a.montantPaye < a.ttc
             """)
     BigDecimal sumTtcNonPayeesByFournisseurId(@Param("fournisseurId") UUID fournisseurId);
 
@@ -88,42 +87,8 @@ public interface AchatRepository extends JpaRepository<Achat, UUID> {
     // Same outstanding orders valued HT, for the margin formulas that read
     // everything net of tax.
     @Query("""
-            SELECT COALESCE(SUM(a.ht), 0) FROM Achat a
-            WHERE a.statut <> com.buildflow.erp.domain.achats.entity.AchatStatut.PAYE
+            SELECT COALESCE(SUM((a.ttc - a.montantPaye) * a.ht / a.ttc), 0) FROM Achat a
+            WHERE a.montantPaye < a.ttc AND a.ttc > 0
             """)
     BigDecimal sumHtNonPayees();
-
-    // No explicit "date paiement" field on Achat — dateCommande is used as the
-    // best-available proxy for which period a paid order's outflow falls in.
-    @Query("""
-            SELECT COALESCE(SUM(a.ttc), 0) FROM Achat a
-            WHERE a.statut = com.buildflow.erp.domain.achats.entity.AchatStatut.PAYE
-            AND (a.modePaiement IS NULL OR a.modePaiement <> com.buildflow.erp.common.paiement.ModePaiement.CAISSE)
-            AND a.dateCommande BETWEEN :start AND :end
-            """)
-    BigDecimal sumTtcPayeesBetween(@Param("start") LocalDate start, @Param("end") LocalDate end);
-
-    // Same set of paid orders, valued HT. Achats are the only outflow that
-    // carries a separable TVA, so this is what makes a tax-free reading of the
-    // décaissements possible at all.
-    @Query("""
-            SELECT COALESCE(SUM(a.ht), 0) FROM Achat a
-            WHERE a.statut = com.buildflow.erp.domain.achats.entity.AchatStatut.PAYE
-            AND (a.modePaiement IS NULL OR a.modePaiement <> com.buildflow.erp.common.paiement.ModePaiement.CAISSE)
-            AND a.dateCommande BETWEEN :start AND :end
-            """)
-    BigDecimal sumHtPayeesBetween(@Param("start") LocalDate start, @Param("end") LocalDate end);
-
-    // Paid orders that count towards the hors-fiscalité result: the purchase
-    // genuinely served the site, and there is no official invoice to declare.
-    // An order carrying a fiscal effect drops out of the total entirely.
-    @Query("""
-            SELECT COALESCE(SUM(a.ht), 0) FROM Achat a
-            WHERE a.statut = com.buildflow.erp.domain.achats.entity.AchatStatut.PAYE
-            AND a.impactAnalytiqueChantier = true
-            AND a.impactComptableFiscal = false
-            AND (a.modePaiement IS NULL OR a.modePaiement <> com.buildflow.erp.common.paiement.ModePaiement.CAISSE)
-            AND a.dateCommande BETWEEN :start AND :end
-            """)
-    BigDecimal sumHtPayeesEffetChantierBetween(@Param("start") LocalDate start, @Param("end") LocalDate end);
 }
