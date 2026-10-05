@@ -74,6 +74,11 @@ public class StockServiceImpl implements StockService {
             mouvement.setTypeMouvement(TypeMouvement.ENTREE);
             mouvement.setQuantite(quantiteEnStock);
             mouvement.setDocumentRef(achat.getRef()); // Traceability!
+            // La même traçabilité, mais exploitable : la ligne porte le prix
+            // d'entrée et les indicateurs de la commande, que la référence
+            // texte ne permettait d'atteindre qu'au prix d'une jointure
+            // ambiguë dès qu'une commande répète un article.
+            mouvement.setLigneAchat(ligne);
             mouvementStockRepository.save(mouvement);
         }
     }
@@ -223,6 +228,20 @@ public class StockServiceImpl implements StockService {
                 emplacementLabel(source), emplacementLabel(destination));
 
         return stockMapper.toResponse(savedTo);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public BigDecimal valeurStockEffetChantierHt() {
+        // Une valeur par ligne de stock, chacune déjà pondérée par sa part
+        // d'entrées effet chantier. Les nulles sont les lignes sans entrée
+        // valorisée : elles ne contribuent pas, plutôt que de contribuer en
+        // entier à un périmètre dont rien ne prouve qu'elles relèvent.
+        double total = stockArticleRepository.valeursEffetChantierParLigne().stream()
+                .filter(java.util.Objects::nonNull)
+                .mapToDouble(Double::doubleValue)
+                .sum();
+        return BigDecimal.valueOf(total);
     }
 
     @Override
