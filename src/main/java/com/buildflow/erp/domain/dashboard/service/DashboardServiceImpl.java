@@ -8,7 +8,6 @@ import com.buildflow.erp.domain.salaires.repository.FichePaieRepository;
 import com.buildflow.erp.domain.soustraitance.repository.ContratSousTraitantRepository;
 import com.buildflow.erp.domain.soustraitance.repository.PaiementSousTraitantRepository;
 import com.buildflow.erp.domain.stock.repository.StockArticleRepository;
-import com.buildflow.erp.domain.stock.service.StockService;
 import com.buildflow.erp.domain.tresorerie.repository.CaisseTransactionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -32,7 +31,6 @@ public class DashboardServiceImpl implements DashboardService {
     private final FichePaieRepository fichePaieRepository;
     private final CaisseTransactionRepository caisseTransactionRepository;
     private final StockArticleRepository stockArticleRepository;
-    private final StockService stockService;
     private final AttachementRepository attachementRepository;
 
     private static final LocalDate ALL_TIME_START = LocalDate.of(1970, 1, 1);
@@ -82,17 +80,10 @@ public class DashboardServiceImpl implements DashboardService {
                 BigDecimal.valueOf(stockArticleRepository.sumValeurStockAuDepotHt()));
         BigDecimal valeurStocksSurChantiersHt = round(
                 BigDecimal.valueOf(stockArticleRepository.sumValeurStockSurChantiersHt()));
-        // Le stock de l'effet chantier, celui que retient le calcul 1.
-        //
-        // Chaque entree porte desormais la ligne de commande qui l'a produite,
-        // donc son prix et les indicateurs de la commande. La part se lit en
-        // prorata de la valeur des entrees, ligne de stock par ligne de stock :
-        // la convention, et ce qu'elle laisse de cote, vivent sur StockService.
-        //
-        // Elle vaut le stock global quand toutes les commandes partagent leurs
-        // indicateurs, et s'en ecarte des qu'un achat a effet fiscal a alimente
-        // le stock. C'est exactement ce qui fait diverger les deux marges.
-        BigDecimal valeurStocksEffetChantierHt = round(stockService.valeurStockEffetChantierHt());
+        // Retour au stock global pour le resultat hors fiscalite, sans prorata
+        // par origine. La migration 045 est conservee pour les bases existantes,
+        // mais son lien d'origine n'intervient plus dans ce calcul.
+        BigDecimal valeurStocksEffetChantierHt = valeurStocksGlobaleHt;
 
         // ── Flow KPIs (scoped to `month`, or all-time when absent) ───
         BigDecimal decaissementsCaisseTtc = round(caisseTransactionRepository.sumDebitsBetween(dtStart, dtEnd));

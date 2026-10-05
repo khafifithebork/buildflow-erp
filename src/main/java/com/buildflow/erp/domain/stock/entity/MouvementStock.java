@@ -1,7 +1,6 @@
 package com.buildflow.erp.domain.stock.entity;
 
 import com.buildflow.erp.common.entity.BaseEntity;
-import com.buildflow.erp.domain.achats.entity.LigneAchat;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -28,25 +27,4 @@ public class MouvementStock extends BaseEntity {
 
     @Column(name = "document_ref", length = 100)
     private String documentRef;
-
-    /**
-     * La ligne de commande qui a produit cette entrée, quand il y en a une.
-     *
-     * <p>Elle porte les deux choses dont la valorisation par origine a besoin :
-     * le prix d'entrée, que ce mouvement ne stocke pas, et les indicateurs
-     * effet chantier / effet fiscal de la commande.
-     *
-     * <p>Nulle sur tout le reste — entrée saisie à la main, transfert,
-     * ajustement. Une entrée sans ligne n'a pas d'origine connue, et
-     * {@link com.buildflow.erp.domain.stock.repository.StockArticleRepository#valeursEffetChantierParLigne()}
-     * la compte au dénominateur sans jamais l'attribuer : ne rien affirmer
-     * plutôt que deviner.
-     *
-     * <p>{@code document_ref} reste en place, et reste la seule trace sur un
-     * transfert ou une saisie. Les deux ne se contredisent pas : la référence
-     * décrit, la clé rattache.
-     */
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ligne_achat_id")
-    private LigneAchat ligneAchat;
 }

@@ -38,10 +38,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * ce qui est réellement sorti — achats en HT, paie et caisse à leur montant,
  * soit exactement les décaissements réels de la marge nette.
  *
- * <p>Les deux indicateurs diffèrent donc par deux périmètres à la fois, celui
- * des décaissements et celui des stocks, et c'est ce que ces tests figent. Le
- * découpage du stock par origine se vérifie à part, dans
- * {@code StockEffetChantierTests}, sur des données maîtrisées ligne par ligne.
+ * <p>Les deux indicateurs ne diffèrent donc plus que par les stocks, et c'est
+ * ce que ces tests figent.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -83,24 +81,13 @@ class ResultatHorsFiscaliteTests {
         assertThat(k.decaissementsReelsHt()).isLessThanOrEqualTo(k.decaissementsGlobauxHt());
     }
 
-    /**
-     * Le stock de l'effet chantier ne depasse jamais le stock global.
-     *
-     * <p>Remplace le test qui figeait leur egalite. Elle tenait a une limite du
-     * schema — rien ne rattachait un mouvement de stock a l'achat qui l'avait
-     * cree — et ce lien existe desormais : les deux divergent des qu'un achat
-     * hors perimetre chantier alimente le stock.
-     *
-     * <p>Ce qui reste vrai est l'inegalite, et elle l'est par construction : la
-     * part effet chantier d'une ligne vaut au plus sa valeur. Le decoupage
-     * lui-meme se verifie dans StockEffetChantierTests, ou les donnees sont
-     * maitrisees ligne par ligne.
-     */
+    /** Le rollback retient tout le stock, meme issu d'un achat hors chantier. */
     @Test
-    void chantierStockNeverExceedsGlobalStock() {
+    void chantierStockEqualsGlobalStockAfterRollback() {
+        newAchat(false);
         DashboardKpisResponse k = dashboardService.getKpis(null);
 
-        assertThat(k.valeurStocksEffetChantierHt()).isLessThanOrEqualTo(k.valeurStocksGlobaleHt());
+        assertThat(k.valeurStocksEffetChantierHt()).isEqualByComparingTo(k.valeurStocksGlobaleHt());
     }
 
     /** Les deux calculs portent bien chacun un terme de stock. */
@@ -143,50 +130,10 @@ class ResultatHorsFiscaliteTests {
         // Le calcul 2 compte la sortie et l'entree en stock : il ne bouge pas.
         assertThat(apres.margeNetteComptableHt())
                 .isEqualByComparingTo(avant.margeNetteComptableHt());
-        // Le calcul 1 n'en compte ni l'un ni l'autre : la commande n'est pas
-        // marquee effet chantier, donc ni sa sortie ni le stock qu'elle fait
-        // entrer ne relevent de son perimetre. Il ne bouge pas non plus.
-        //
-        // Il montait du montant HT entier avant que le stock soit decoupe par
-        // origine : la sortie etait ecartee, l'entree comptee, et l'ecart
-        // restait. C'est precisement ce que le decoupage ferme.
+        // Le calcul 1 ecarte cette sortie — non marquee effet chantier — mais
+        // compte le stock entre. Il monte donc du montant HT de la commande.
         assertThat(apres.resultatHorsFiscaliteHt())
-                .isEqualByComparingTo(avant.resultatHorsFiscaliteHt());
-    }
-
-    /**
-     * Le pendant du test precedent, dans le perimetre chantier : les deux
-     * marges restent immobiles elles aussi, chacune pour sa propre raison.
-     *
-     * <p>Le calcul 1 compte la sortie — elle est a effet chantier — et compte
-     * le stock entre, qui l'est donc aussi. Les deux s'annulent. Le calcul 2
-     * fait la meme chose sur ses propres agregats, globaux.
-     *
-     * <p>Les deux tests ensemble disent l'essentiel du decoupage : regler une
-     * commande livree ne deplace aucune marge, que la commande releve du
-     * perimetre chantier ou non. Ce qui deplace une marge, c'est la
-     * consommation du stock ou une depense sans contrepartie.
-     */
-    @Test
-    void payingForDeliveredChantierStockLeavesBothMarginsUnchanged() {
-        DashboardKpisResponse avant = dashboardService.getKpis(null);
-
-        AchatResponse achat = newAchat(true);
-        payer(achat);
-
-        DashboardKpisResponse apres = dashboardService.getKpis(null);
-
-        // La sortie entre bien dans le perimetre restreint...
-        assertThat(apres.decaissementsReelsHt())
-                .isEqualByComparingTo(avant.decaissementsReelsHt().add(achat.ht()));
-        // ...et le stock qu'elle fait entrer aussi.
-        assertThat(apres.valeurStocksEffetChantierHt())
-                .isEqualByComparingTo(avant.valeurStocksEffetChantierHt().add(achat.ht()));
-        // Donc aucune des deux marges ne bouge.
-        assertThat(apres.resultatHorsFiscaliteHt())
-                .isEqualByComparingTo(avant.resultatHorsFiscaliteHt());
-        assertThat(apres.margeNetteComptableHt())
-                .isEqualByComparingTo(avant.margeNetteComptableHt());
+                .isEqualByComparingTo(avant.resultatHorsFiscaliteHt().add(achat.ht()));
     }
 
     /**

@@ -38,19 +38,4 @@ public interface StockService {
      */
     java.math.BigDecimal revaloriser(java.util.UUID articleId, java.util.UUID chantierId,
                                      java.math.BigDecimal quantite, double deltaPrix);
-
-    /**
-     * La valeur du stock relevant de l'effet chantier — celle que retient le
-     * calcul 1, par opposition au stock global du calcul 2.
-     *
-     * <p>Le stock est fongible, donc aucune unité détenue ne porte d'origine :
-     * la part se déduit d'une convention, et celle retenue est le
-     * <b>prorata en valeur des entrées</b>. Ce qu'elle implique exactement, et
-     * ce qu'elle laisse de côté, est détaillé sur
-     * {@link com.buildflow.erp.domain.stock.repository.StockArticleRepository#valeursEffetChantierParLigne()}.
-     *
-     * <p>Vaut le stock global quand toutes les commandes partagent les mêmes
-     * indicateurs, ce qui en fait le cas dégradé plutôt qu'un cas limite.
-     */
-    java.math.BigDecimal valeurStockEffetChantierHt();
 }
