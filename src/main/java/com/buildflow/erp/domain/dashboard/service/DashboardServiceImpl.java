@@ -75,14 +75,12 @@ public class DashboardServiceImpl implements DashboardService {
                 BigDecimal.valueOf(stockArticleRepository.sumValeurStockTravauxHt()));
         // Le même stock découpé par emplacement. Les deux requêtes existaient
         // sans jamais sortir du backend. Purement informatif : elles n'entrent
-        // dans aucune formule, seul le global le fait via la marge nette.
+        // dans aucune formule de resultat, tout comme le stock global.
         BigDecimal valeurStocksAuDepotHt = round(
                 BigDecimal.valueOf(stockArticleRepository.sumValeurStockAuDepotHt()));
         BigDecimal valeurStocksSurChantiersHt = round(
                 BigDecimal.valueOf(stockArticleRepository.sumValeurStockSurChantiersHt()));
-        // Retour au stock global pour le resultat hors fiscalite, sans prorata
-        // par origine. La migration 045 est conservee pour les bases existantes,
-        // mais son lien d'origine n'intervient plus dans ce calcul.
+        // Legacy stock alias retained for API compatibility; informational only.
         BigDecimal valeurStocksEffetChantierHt = valeurStocksGlobaleHt;
 
         // ── Flow KPIs (scoped to `month`, or all-time when absent) ───
@@ -131,63 +129,25 @@ public class DashboardServiceImpl implements DashboardService {
                 .add(stPayeesHt)
                 .add(salairesPayeesNet);
 
-        // Outflows retained by the hors-fiscalité reading. The two operational
-        // indicators decide membership: an operation counts when it genuinely
-        // served the site (effet chantier) and carries no official invoice to
-        // declare (effet fiscal). Anything fiscal drops out entirely.
-        //
-        // Only achats and caisse operations carry these flags, so they are the
-        // only outflows that can be classified. Sous-traitance payments and
-        // salaries have no such marking and are therefore not counted here —
-        // "on ne compte que l'effet chantier" read literally: unmarked is not
-        // marked.
+        // Filter purchases and cash by effet chantier, excluding effet fiscal.
         BigDecimal decaissementsEffetChantierHt =
                 round(paiementAchatRepository.sumPayeesHtEffetChantierBetween(dateStart, dateEnd))
                         .add(round(caisseTransactionRepository
                                 .sumDebitsEffetChantierBetween(dtStart, dtEnd)));
 
-        // ── Margin formulas ───────────────────────────────────────────
-        // Calcul 1 — la situation reelle d'exploitation, hors effet fiscal.
-        //
-        // C'est lui qui porte le nom « resultat hors fiscalite » : il ecarte
-        // l'effet fiscal, ce que le nom annonce. Les deux etaient intervertis
-        // jusqu'ici — « hors fiscalite » designait le calcul global.
-        //
-        //   encaissements reels HT - decaissements reels HT + stock effet chantier
-        //
-        // « Hors effet fiscal la ou c'est requis » : seuls les achats et la
-        // caisse portent les deux drapeaux, donc eux seuls se filtrent. La
-        // sous-traitance et la paie n'en portent aucun — il n'y a rien a en
-        // exclure, elles entrent entieres. La paie et la caisse restent a leur
-        // montant, faute de TVA a reconvertir.
+        // Calcul 2: real collections minus disbursements excluding fiscal effects.
+        // Payroll and subcontractor payments retain their existing treatment.
+        // Stock is informational and does not enter either result.
         BigDecimal decaissementsReelsHt = decaissementsEffetChantierHt
                 .add(stPayeesHt)
                 .add(salairesPayeesNet);
 
         BigDecimal resultatHorsFiscaliteHt = round(
-                encaissementsGlobauxHt.subtract(decaissementsReelsHt)
-                        .add(valeurStocksEffetChantierHt));
+                encaissementsGlobauxHt.subtract(decaissementsReelsHt));
 
-        // Calcul 2 — la lecture globale.
-        //
-        //   encaissements reels HT - decaissement global + stock global
-        //
-        // Calcul 2 — la situation globale, effet fiscal compris.
-        //
-        // « Comptable » au sens ou rien n'est ecarte : tout ce qui est
-        // reellement sorti, effet chantier comme effet fiscal, sans filtre de
-        // drapeau. C'est la difference de fond avec le calcul 1.
-        //
-        // Les deux indicateurs different donc par deux choses a la fois : le
-        // perimetre des decaissements, et celui du stock. Le second reste
-        // theorique tant que mouvements_stock ne porte pas de cle vers son
-        // achat ; le premier, lui, joue des aujourd'hui.
-        //
-        // decaissementsEffetChantierHt reste calcule : l'export Excel le porte
-        // encore comme colonne a part entiere.
+        // Calcul 1: real collections minus all real disbursements, including fiscal effects.
         BigDecimal margeNetteComptableHt = round(
-                encaissementsGlobauxHt.subtract(decaissementsGlobauxHt)
-                        .add(valeurStocksGlobaleHt));
+                encaissementsGlobauxHt.subtract(decaissementsGlobauxHt));
 
         // Also fully HT. Net salaries carry no TVA, so paieAPayerNet is already
         // a tax-free figure and needs no HT counterpart.

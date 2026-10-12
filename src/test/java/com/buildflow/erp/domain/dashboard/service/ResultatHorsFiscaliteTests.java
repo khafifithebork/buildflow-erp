@@ -30,17 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Sur quoi se calculent les deux marges.
- *
- * <p>Il se lisait sur les seules opérations marquées effet chantier et non
- * effet fiscal. Le client a tranché autrement : ce qu'il veut voir, c'est tout
- * ce qui est réellement sorti — achats en HT, paie et caisse à leur montant,
- * soit exactement les décaissements réels de la marge nette.
- *
- * <p>Les deux indicateurs ne diffèrent donc plus que par les stocks, et c'est
- * ce que ces tests figent.
- */
+/** Both results exclude stock and differ only by the scope of disbursements. */
 @SpringBootTest
 @ActiveProfiles("test")
 @Transactional
@@ -55,25 +45,16 @@ class ResultatHorsFiscaliteTests {
 
     private static final AtomicInteger SEQ = new AtomicInteger();
 
-    /**
-     * Ce qui separe les deux marges, maintenant : deux choses a la fois.
-     *
-     * <p>Le perimetre des decaissements — le calcul 1 ecarte l'effet fiscal,
-     * le calcul 2 non — et le perimetre du stock. L'ecart total vaut donc la
-     * somme des deux ecarts, quel que soit le jeu de donnees.
-     */
     @Test
-    void theTwoMarginsDifferByDisbursementScopeAndStockScope() {
+    void theTwoMarginsDifferOnlyByDisbursementScope() {
         DashboardKpisResponse k = dashboardService.getKpis(null);
 
         BigDecimal ecartDecaissements = k.decaissementsGlobauxHt().subtract(k.decaissementsReelsHt());
-        BigDecimal ecartStock = k.valeurStocksEffetChantierHt().subtract(k.valeurStocksGlobaleHt());
 
         assertThat(k.resultatHorsFiscaliteHt().subtract(k.margeNetteComptableHt()))
-                .isEqualByComparingTo(ecartDecaissements.add(ecartStock));
+                .isEqualByComparingTo(ecartDecaissements);
     }
 
-    /** Le calcul 1 ecarte bien l'effet fiscal : son perimetre est plus etroit. */
     @Test
     void theRealReadingNeverExceedsTheGlobalOne() {
         DashboardKpisResponse k = dashboardService.getKpis(null);
@@ -81,7 +62,6 @@ class ResultatHorsFiscaliteTests {
         assertThat(k.decaissementsReelsHt()).isLessThanOrEqualTo(k.decaissementsGlobauxHt());
     }
 
-    /** Le rollback retient tout le stock, meme issu d'un achat hors chantier. */
     @Test
     void chantierStockEqualsGlobalStockAfterRollback() {
         newAchat(false);
@@ -90,30 +70,21 @@ class ResultatHorsFiscaliteTests {
         assertThat(k.valeurStocksEffetChantierHt()).isEqualByComparingTo(k.valeurStocksGlobaleHt());
     }
 
-    /** Les deux calculs portent bien chacun un terme de stock. */
     @Test
-    void bothReadingsCarryAStockTerm() {
-        DashboardKpisResponse k = dashboardService.getKpis(null);
+    void deliveringUnpaidStockDoesNotChangeEitherResult() {
+        AchatResponse achat = newAchat(true);
+        DashboardKpisResponse before = dashboardService.getKpis(null);
+        achatService.validateBL(achat.id(), "BL-" + UUID.randomUUID());
+        DashboardKpisResponse after = dashboardService.getKpis(null);
 
-        assertThat(k.margeNetteComptableHt())
-                .isEqualByComparingTo(k.resultatHorsFiscaliteHt()
-                        .add(k.decaissementsReelsHt()).subtract(k.decaissementsGlobauxHt())
-                        .subtract(k.valeurStocksEffetChantierHt()).add(k.valeurStocksGlobaleHt()));
+        assertThat(after.valeurStocksGlobaleHt())
+                .isEqualByComparingTo(before.valeurStocksGlobaleHt().add(achat.ht()));
+        assertThat(after.margeNetteComptableHt()).isEqualByComparingTo(before.margeNetteComptableHt());
+        assertThat(after.resultatHorsFiscaliteHt()).isEqualByComparingTo(before.resultatHorsFiscaliteHt());
     }
 
-    /**
-     * Regler une commande livree ne bouge aucune des deux marges.
-     *
-     * <p>Et c'est juste : la commande sort 300 HT de tresorerie et fait entrer
-     * 300 de stock. Les decaissements montent de 300, le stock monte de 300,
-     * la marge ne bouge pas. Elle ne bougera qu'a la consommation du stock, ou
-     * sur une depense sans contrepartie en stock.
-     *
-     * <p>C'est la consequence directe du terme de stock ajoute au calcul 2 :
-     * avant, cet indicateur chutait du montant entier de chaque achat paye.
-     */
     @Test
-    void payingForDeliveredStockLeavesBothMarginsUnchanged() {
+    void payingForStockOutsideChantierScopeReducesOnlyGlobalResult() {
         DashboardKpisResponse avant = dashboardService.getKpis(null);
 
         AchatResponse achat = newAchat(false);
@@ -121,25 +92,16 @@ class ResultatHorsFiscaliteTests {
 
         DashboardKpisResponse apres = dashboardService.getKpis(null);
 
-        // Les decaissements ont bien monte du montant HT...
         assertThat(apres.decaissementsGlobauxHt())
                 .isEqualByComparingTo(avant.decaissementsGlobauxHt().add(achat.ht()));
-        // ...et le stock aussi, donc les deux marges restent ou elles etaient.
         assertThat(apres.valeurStocksGlobaleHt())
                 .isEqualByComparingTo(avant.valeurStocksGlobaleHt().add(achat.ht()));
-        // Le calcul 2 compte la sortie et l'entree en stock : il ne bouge pas.
         assertThat(apres.margeNetteComptableHt())
-                .isEqualByComparingTo(avant.margeNetteComptableHt());
-        // Le calcul 1 ecarte cette sortie — non marquee effet chantier — mais
-        // compte le stock entre. Il monte donc du montant HT de la commande.
+                .isEqualByComparingTo(avant.margeNetteComptableHt().subtract(achat.ht()));
         assertThat(apres.resultatHorsFiscaliteHt())
-                .isEqualByComparingTo(avant.resultatHorsFiscaliteHt().add(achat.ht()));
+                .isEqualByComparingTo(avant.resultatHorsFiscaliteHt());
     }
 
-    /**
-     * Un achat hors perimetre chantier compte quand meme dans les
-     * decaissements globaux — c'est ce qui separe les deux agregats.
-     */
     @Test
     void aSettledOrderOutsideTheChantierScopeStillCounts() {
         DashboardKpisResponse avant = dashboardService.getKpis(null);
@@ -151,12 +113,10 @@ class ResultatHorsFiscaliteTests {
 
         assertThat(apres.decaissementsGlobauxHt())
                 .isEqualByComparingTo(avant.decaissementsGlobauxHt().add(achat.ht()));
-        // Non marque effet chantier : l'agregat restreint ne bouge pas.
         assertThat(apres.decaissementsEffetChantierHt())
                 .isEqualByComparingTo(avant.decaissementsEffetChantierHt());
     }
 
-    /** Un achat marque effet chantier entre dans les deux agregats. */
     @Test
     void aSettledOrderInsideTheChantierScopeCountsToo() {
         DashboardKpisResponse avant = dashboardService.getKpis(null);
@@ -170,16 +130,12 @@ class ResultatHorsFiscaliteTests {
                 .isEqualByComparingTo(avant.decaissementsGlobauxHt().add(achat.ht()));
         assertThat(apres.decaissementsEffetChantierHt())
                 .isEqualByComparingTo(avant.decaissementsEffetChantierHt().add(achat.ht()));
+        assertThat(apres.margeNetteComptableHt())
+                .isEqualByComparingTo(avant.margeNetteComptableHt().subtract(achat.ht()));
+        assertThat(apres.resultatHorsFiscaliteHt())
+                .isEqualByComparingTo(avant.resultatHorsFiscaliteHt().subtract(achat.ht()));
     }
 
-    /**
-     * Les stocks par emplacement sont informatifs : ils n'entrent nulle part.
-     *
-     * <p>Le découpage par emplacement somme au même total que le découpage par
-     * disponibilité — c'est le même stock, lu deux fois. Et la marge nette ne
-     * lit que le global : si l'une des deux ventilations entrait dans une
-     * formule, l'identité stocks de l'autre test tomberait.
-     */
     @Test
     void theStockBreakdownsAreInformationalOnly() {
         DashboardKpisResponse k = dashboardService.getKpis(null);
@@ -190,7 +146,6 @@ class ResultatHorsFiscaliteTests {
                 .isEqualByComparingTo(k.valeurStocksGlobaleHt());
     }
 
-    /** Une commande non réglée ne sort rien, donc ne bouge pas l'indicateur. */
     @Test
     void anUnsettledOrderDoesNotMoveIt() {
         DashboardKpisResponse avant = dashboardService.getKpis(null);
@@ -239,7 +194,7 @@ class ResultatHorsFiscaliteTests {
                 effetChantier, false));
     }
 
-    /** Réglé par virement : reste hors caisse, donc compté une seule fois. */
+    /** Bank transfer: counted outside cash, once only. */
     private void payer(AchatResponse achat) {
         String suffix = UUID.randomUUID().toString().substring(0, 8);
         achatService.validateBL(achat.id(), "BL-" + suffix);
