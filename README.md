@@ -1,14 +1,14 @@
 # BuildFlow ERP — Backend
 
-ERP de chantier (BTP marocain) : achats, stock, paie, trésorerie, sous-traitance, comptabilité. Spring Boot + PostgreSQL, API REST sous `/api/v1`.
+Construction ERP for Moroccan BTP companies: purchasing, stock, payroll, treasury, subcontracting, accounting. Spring Boot + PostgreSQL, REST API under `/api/v1`.
 
-**Swagger :** [localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html) — la liste des endpoints toujours à jour, générée depuis le code.
+**Swagger:** [localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html) — the always-current endpoint list, generated from the code.
 
 ---
 
-## Démarrer
+## Get it running
 
-**~5 minutes**, Docker suffit. Pas besoin de Java installé.
+**~5 minutes**, Docker is enough. No local Java needed.
 
 ```bash
 git clone <repo-url> && cd buildflow-erp
@@ -18,7 +18,7 @@ git clone <repo-url> && cd buildflow-erp
 cat > .env << 'EOF'
 DB_USERNAME=buildflow_dev
 DB_PASSWORD=devpassword123
-JWT_SECRET=une-cle-secrete-de-32-caracteres-minimum-ici
+JWT_SECRET=a-secret-key-of-at-least-32-characters-here
 EOF
 ```
 
@@ -30,115 +30,115 @@ docker compose up --build -d
 curl http://localhost:8080/actuator/health
 ```
 
-Attendu : `{"status":"UP"}`. L'API est sur **8080**, Postgres sur **5433**.
+Expect `{"status":"UP"}`. The API listens on **8080**, Postgres on **5433**.
 
-Le premier démarrage applique les 45 migrations Liquibase et crée le schéma. Comptez 1 à 2 minutes avant que `health` réponde.
+First boot applies the 45 Liquibase migrations and builds the schema. Allow 1 to 2 minutes before `health` answers.
 
-### Premier appel authentifié
+### Your first authenticated call
 
-**~2 minutes.** Tout sauf `register`, `login` et `health` exige un jeton.
+**~2 minutes.** Everything except `register`, `login` and `health` needs a token.
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/auth/register \
   -H 'Content-Type: application/json' \
-  -d '{"email":"moi@test.ma","password":"MotDePasse123!","role":"ADMIN"}'
+  -d '{"email":"me@test.ma","password":"MyPassword123!","role":"ADMIN"}'
 ```
 
-Un compte créé est en attente. Approuvez-le, sinon le login échoue :
+A new account starts pending. Approve it, or login fails:
 
 ```bash
 docker compose exec postgres psql -U buildflow_dev -d buildflow \
-  -c "UPDATE users SET status='APPROVED' WHERE email='moi@test.ma';"
+  -c "UPDATE users SET status='APPROVED' WHERE email='me@test.ma';"
 ```
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"email":"moi@test.ma","password":"MotDePasse123!"}'
+  -d '{"email":"me@test.ma","password":"MyPassword123!"}'
 ```
 
-Le jeton est dans `data.accessToken`. Il vaut 24 h. Ensuite :
+The token is at `data.accessToken` and lasts 24 hours. Then:
 
 ```bash
 curl http://localhost:8080/api/v1/articles \
-  -H "Authorization: Bearer <le-jeton>"
+  -H "Authorization: Bearer <the-token>"
 ```
 
 ---
 
-## Les 5 pièges qui font échouer une intégration
+## The 5 traps that sink an integration
 
-Lisez ces cinq lignes avant d'écrire le premier appel. Ce sont celles qui coûtent une après-midi.
+Read these five lines before writing your first call. They are the ones that cost an afternoon.
 
-1. **Créez et approvisionnez une caisse avant tout paiement.** Achats, paie et sous-traitance débitent la caisse du chantier. Sans caisse créditée, chaque paiement renvoie `422`.
-2. **Les codes sont assignés par le serveur.** N'envoyez jamais `code`, `ref` ou `matricule` — le champ est absent des requêtes de création et ne change jamais ensuite.
-3. **Les transitions de workflow sont strictes.** Une commande va `EN_COURS → LIVRE → FACTURE → PAYE`, sans saut. Hors séquence : `422`.
-4. **Les réponses sont enveloppées.** La donnée est dans `data`, jamais à la racine. `data.accessToken`, pas `accessToken`.
-5. **L'argent est un nombre, pas une chaîne.** Envoyez `75.00`, pas `"75.00"`. Les dates sont ISO : `"2026-07-01"`, et `"2026-07"` pour une période de paie.
+1. **Create and fund a caisse before any payment.** Purchases, payroll and subcontracting all debit the chantier's caisse. With no funded caisse, every payment returns `422`.
+2. **Codes are server-assigned.** Never send `code`, `ref` or `matricule` — the field is absent from every create request and never changes afterwards.
+3. **Workflow transitions are strict.** An order goes `EN_COURS → LIVRE → FACTURE → PAYE`, no skipping. Out of sequence: `422`.
+4. **Responses are enveloped.** The payload is under `data`, never at the root. `data.accessToken`, not `accessToken`.
+5. **Money is a number, not a string.** Send `75.00`, not `"75.00"`. Dates are ISO: `"2026-07-01"`, and `"2026-07"` for a payroll period.
 
-### L'ordre de création des données
+### What to create, in order
 
-Rien ne se crée dans le vide : chaque étape a besoin de la précédente.
+Nothing can be created in a vacuum — each step needs the one before it.
 
 ```
-Catégories → Articles ─┐
+Categories → Articles ─┐
 Fournisseurs ──────────┼→ Achats
 Chantiers ─────────────┤
-  └→ Caisse (+ CREDIT) ─┴→ tout paiement
-Employés ──────────────→ Paie
-Sous-traitants ────────→ Contrats
+  └→ Caisse (+ CREDIT) ─┴→ any payment
+Employes ──────────────→ Payroll
+Sous-traitants ────────→ Contracts
 ```
 
 ```javascript
-// 1. jeton
+// 1. token
 const { data } = await axios.post('/api/v1/auth/login', { email, password });
 axios.defaults.headers.common.Authorization = `Bearer ${data.data.accessToken}`;
 
-// 2. la caisse du chantier, puis son approvisionnement
+// 2. the chantier's caisse, then fund it
 const caisse = await axios.post('/api/v1/caisses', { libelle, chantierId, seuilMinimum });
 await axios.post(`/api/v1/caisses/${caisse.data.data.id}/transactions`, {
-  typeTransaction: 'CREDIT', montant: 500000, motif: 'Dotation initiale'
+  typeTransaction: 'CREDIT', montant: 500000, motif: 'Initial funding'
 });
 
-// 3. les workflows de paiement sont ouverts
+// 3. payment workflows are now open
 ```
 
-**CORS** : `http://localhost:3000` par défaut. Changez `app.cors.allowed-origin`.
+**CORS**: `http://localhost:3000` by default. Change `app.cors.allowed-origin`.
 
 ---
 
-## Variables d'environnement
+## Environment variables
 
-| Variable | Rôle | Défaut |
-|----------|------|--------|
-| `DB_URL` | chaîne JDBC | `jdbc:postgresql://localhost:5433/buildflow` |
-| `DB_USERNAME` | utilisateur PostgreSQL | `buildflow_dev` |
-| `DB_PASSWORD` | mot de passe | `devpassword123` |
-| `JWT_SECRET` | clé HMAC de signature, 32 caractères minimum | **requis** |
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `DB_URL` | JDBC connection string | `jdbc:postgresql://localhost:5433/buildflow` |
+| `DB_USERNAME` | PostgreSQL user | `buildflow_dev` |
+| `DB_PASSWORD` | PostgreSQL password | `devpassword123` |
+| `JWT_SECRET` | HMAC signing key, 32 characters minimum | **required** |
 
 ---
 
-## Rôles
+## Roles
 
-Neuf rôles, portés par une colonne enum sur `users`. Il n'y a ni table `roles` ni table `user_role`.
+Nine roles, held in an enum column on `users`. There is no `roles` table and no `user_role` table.
 
-| Rôle | Accès |
-|------|-------|
-| `ADMIN` | tout |
-| `DIRECTEUR` | chantiers, contrats, vue financière |
-| `FINANCE` | paiements, trésorerie, validation de paie |
-| `RH` | employés, création de paie |
-| `PM` | gestion de chantier, une partie des achats |
-| `ACHAT` | achats, articles, fournisseurs |
-| `CHEF_CHANTIER` | opérations de chantier, stock |
+| Role | Access |
+|------|--------|
+| `ADMIN` | everything |
+| `DIRECTEUR` | projects, contracts, financial oversight |
+| `FINANCE` | payments, treasury, payroll validation |
+| `RH` | employees, payroll creation |
+| `PM` | project management, some purchasing |
+| `ACHAT` | purchasing, articles, suppliers |
+| `CHEF_CHANTIER` | site operations, stock |
 | `MAGASINIER` | stock |
-| `VIEWER` | lecture seule |
+| `VIEWER` | read-only |
 
-**Endpoints publics**, les seuls sans jeton : `POST /auth/register`, `POST /auth/login`, `GET /actuator/health`, `GET /swagger-ui/**`, `GET /v3/api-docs/**`.
+**Public endpoints**, the only ones that need no token: `POST /auth/register`, `POST /auth/login`, `GET /actuator/health`, `GET /swagger-ui/**`, `GET /v3/api-docs/**`.
 
 ---
 
-## Pile technique
+## Tech stack
 
 | Component | Technology |
 |-----------|------------|
@@ -154,9 +154,9 @@ Neuf rôles, portés par une colonne enum sur `users`. Il n'y a ni table `roles`
 
 ---
 
-## Conventions de l'API
+## API conventions
 
-### L’enveloppe de réponse
+### Response Envelope
 
 All successful responses use this wrapper:
 
@@ -168,7 +168,7 @@ All successful responses use this wrapper:
 }
 ```
 
-### La pagination
+### Paginated Responses
 
 Endpoints returning paginated data use `?page=0&size=20&sort=field,asc`:
 
@@ -185,7 +185,7 @@ Endpoints returning paginated data use `?page=0&size=20&sort=field,asc`:
 }
 ```
 
-### L’argent et la précision
+### Money and precision
 
 | Kind | Type | Why |
 |------|------|-----|
@@ -200,7 +200,7 @@ into the ledger.
 > repeated sums drift. Do not compare prices for exact equality, and do not
 > extend the type to columns that are summed into a balance.
 
-### Les codes d’entités <a id="entity-codes"></a>
+### Entity codes
 
 Codes, références and matricules are **assigned by the server** on create.
 Clients do not send them — the field is absent from every `Create…Request` — and
@@ -234,7 +234,7 @@ so generated codes cannot collide with records that predate the feature.
 
 ---
 
-## Les endpoints
+## Endpoints
 
 ### Authentication — `/api/v1/auth`
 
@@ -727,24 +727,24 @@ mode is not a change and appends nothing.
 
 ---
 
-## Les enums
+## Enums
 
-| Enum | Valeurs |
-|------|---------|
+| Enum | Values |
+|------|--------|
 | `Role` (auth) | `ADMIN`, `DIRECTEUR`, `CHEF_CHANTIER`, `MAGASINIER`, `RH`, `FINANCE`, `PM`, `ACHAT`, `VIEWER` |
-| `UserStatus` | `PENDING`, `APPROVED`, `REJECTED` — un compte doit être `APPROVED` pour se connecter |
+| `UserStatus` | `PENDING`, `APPROVED`, `REJECTED` — an account must be `APPROVED` to log in |
 | `ChantierStatut` | `EN_PREPARATION`, `EN_COURS`, `EN_PAUSE`, `TERMINE`, `ANNULE` |
 | `JalonStatut` | `A_FAIRE`, `EN_COURS`, `TERMINE`, `EN_RETARD` |
 | `FournisseurStatut` | `ACTIF`, `INACTIF`, `BLACKLISTE` |
 | `SousTraitantStatut` | `ACTIF`, `INACTIF`, `BLACKLISTE` |
 | `EmployeStatut` | `ACTIF`, `CONGE`, `INACTIF` |
-| `EmployeRole` (RH) | `ADMIN`, `RH`, `FINANCE`, `PM`, `ACHAT`, `CONDUCTEUR_TRAVAUX`, `CHEF_EQUIPE`, `OUVRIER` |
+| `EmployeRole` (HR) | `ADMIN`, `RH`, `FINANCE`, `PM`, `ACHAT`, `CONDUCTEUR_TRAVAUX`, `CHEF_EQUIPE`, `OUVRIER` |
 | `TypeContrat` | `CDI`, `CDD`, `ANAPEC`, `JOURNALIER` |
 | `DossierStatut` | `INCOMPLET`, `COMPLET` |
 | `AchatStatut` | `EN_COURS`, `LIVRE`, `FACTURE`, `PAYE` |
 | `TypeMouvement` | `ENTREE`, `SORTIE`, `TRANSFERT`, `AJUSTEMENT` |
 | `TypeTransaction` | `CREDIT`, `DEBIT` |
-| `ModePaiement` | `VIREMENT`, `CHEQUE`, `EFFET`, `CAISSE` — seul `CAISSE` débite la trésorerie |
+| `ModePaiement` | `VIREMENT`, `CHEQUE`, `EFFET`, `CAISSE` — only `CAISSE` debits the treasury |
 | `TypeDocumentPaiement` | `ACHAT`, `FICHE_PAIE`, `PAIEMENT_SOUS_TRAITANT`, `DEMANDE_PAIE` |
 | `FichePaieStatut` | `BROUILLON`, `VALIDEE`, `PAYEE` |
 | `DemandePaieStatut` | `SOUMISE`, `VALIDEE`, `PAYEE` |
@@ -754,7 +754,7 @@ mode is not a change and appends nothing.
 
 ---
 
-## Erreurs
+## Error Handling
 
 All errors use RFC 9457 Problem Details format:
 
@@ -769,100 +769,100 @@ All errors use RFC 9457 Problem Details format:
 
 ---
 
-## Endpoints non encore détaillés ici
+## Endpoints not detailed here
 
-Ces contrôleurs existent et répondent, mais leurs tables ne sont pas dans ce README. Swagger les liste, lui, puisqu'il est généré depuis le code.
+These controllers exist and answer, but their tables are not in this README. Swagger lists them, being generated from the code.
 
-| Préfixe | Domaine |
-|---------|---------|
-| `/api/v1/chantiers/{chantierId}/bpu-lignes` | bordereau des prix unitaires |
-| `/api/v1/chantiers/{chantierId}/attachements` | attachements (situations de travaux) |
-| `/api/v1/demandes-paie` | demandes de paie |
-| `/api/v1/dashboard/kpis` | indicateurs du tableau de bord |
-| `/api/v1/comptabilite` | écritures comptables, dérivées |
-| `/api/v1/export` | exports Excel |
-| `/api/v1/users` | administration des comptes (approbation) |
+| Prefix | Domain |
+|--------|--------|
+| `/api/v1/chantiers/{chantierId}/bpu-lignes` | bordereau des prix unitaires (unit-price schedule) |
+| `/api/v1/chantiers/{chantierId}/attachements` | attachements (progress claims) |
+| `/api/v1/demandes-paie` | payroll requests |
+| `/api/v1/dashboard/kpis` | dashboard indicators |
+| `/api/v1/comptabilite` | accounting entries, derived |
+| `/api/v1/export` | Excel exports |
+| `/api/v1/users` | account administration (approval) |
 
 ---
 
 ## Architecture
 
-Monolithe modulaire. Un paquet par domaine, la même structure dans chacun.
+Modular monolith. One package per domain, the same structure inside each.
 
 ```
 com.buildflow.erp
-├── common/         noyau partagé — BaseEntity, ApiResponse, exceptions, Tva
+├── common/         shared kernel — BaseEntity, ApiResponse, exceptions, Tva
 ├── config/         SecurityConfig, OpenApiConfig, JpaAuditingConfig
-├── security/       filtre JWT, JwtService, UserPrincipal
-└── domain/<nom>/
-    ├── controller/   endpoints REST
-    ├── dto/request/  entrées validées (records)
-    ├── dto/response/ sorties (records)
-    ├── entity/       entités JPA + enums
-    ├── mapper/       interfaces MapStruct
-    ├── repository/   interfaces Spring Data
-    └── service/      règles métier (interface + impl)
+├── security/       JWT filter, JwtService, UserPrincipal
+└── domain/<name>/
+    ├── controller/   REST endpoints
+    ├── dto/request/  validated inbound records
+    ├── dto/response/ outbound records
+    ├── entity/       JPA entities + enums
+    ├── mapper/       MapStruct interfaces
+    ├── repository/   Spring Data interfaces
+    └── service/      business rules (interface + impl)
 ```
 
-Le chemin d'une requête :
+The path of a request:
 
 ```
-requête → filtre JWT (pose le SecurityContext)
-        → contrôleur (valide le corps, délègue)
-        → service (règles métier, appels inter-domaines)
+request → JWT filter (sets the SecurityContext)
+        → controller (validates the body, delegates)
+        → service (business rules, cross-domain calls)
         → repository (JPA → PostgreSQL)
-        → mapper (entité → DTO)
-        → enveloppe ApiResponse → JSON
+        → mapper (entity → DTO)
+        → ApiResponse wrapper → JSON
 ```
 
-### Les effets de bord inter-domaines
+### Cross-domain side effects
 
-C'est ce qui surprend le plus à la lecture : valider une étape dans un domaine en déclenche une autre ailleurs.
+This is what surprises most on first read: validating a step in one domain fires another elsewhere.
 
 ```
 Achats.validateBL()       → StockService.approvisionnerDepuisAchat()
-Achats.regler()           → TresorerieService (débit du montant versé)
-Salaires.payer()          → TresorerieService (débit)
-SousTraitance.payer()     → TresorerieService (débit)
+Achats.regler()           → TresorerieService (debits the amount paid)
+Salaires.payer()          → TresorerieService (debit)
+SousTraitance.payer()     → TresorerieService (debit)
 SousTraitance.create()    → SousTraitant.nombreContratsActifs++
 SousTraitance.payer()     → SousTraitant.montantTotalPaye += montant
 ```
 
 ---
 
-## Limites connues
+## Known limitations
 
-- Pas d'endpoint de suppression générale — création et transitions de workflow surtout. `chantiers` fait exception.
-- Pas d'envoi de fichier.
-- Le stock est théorique : aucun rapprochement avec un inventaire physique.
-- Les alertes de seuil ne sortent pas des journaux serveur.
-- Mono-locataire.
+- No general delete endpoint — mostly creates and workflow transitions. `chantiers` is the exception.
+- No file upload.
+- Stock is theoretical: nothing reconciles it against a physical count.
+- Threshold alerts never leave the server logs.
+- Single-tenant.
 
-### Base de données
+### Database
 
-- 45 fichiers de migration Liquibase, appliqués au démarrage.
-- Tous les identifiants sont des UUID v4.
-- `created_at` / `updated_at` sont gérés automatiquement sur chaque entité.
-- La colonne `mouvements_stock.ligne_achat_id` existe mais n'est plus lue ni écrite : l'attribution du stock par origine a été annulée après son déploiement. À retirer ou à documenter.
+- 45 Liquibase migration files, applied at startup.
+- All IDs are UUID v4.
+- `created_at` / `updated_at` are managed automatically on every entity.
+- The column `mouvements_stock.ligne_achat_id` exists but is no longer read or written: stock attribution by origin was reverted after it shipped. To drop or to document.
 
 ---
 
-## Développer sans Docker
+## Developing without Docker
 
-Java 25 requis. Lancez Postgres à part, puis :
+Java 25 required. Run Postgres separately, then:
 
 ```bash
-DB_URL=jdbc:postgresql://localhost:5433/buildflow DB_USERNAME=buildflow_dev DB_PASSWORD=devpassword123 JWT_SECRET=une-cle-de-32-caracteres-minimum ./mvnw spring-boot:run
+DB_URL=jdbc:postgresql://localhost:5433/buildflow DB_USERNAME=buildflow_dev DB_PASSWORD=devpassword123 JWT_SECRET=a-key-of-at-least-32-characters ./mvnw spring-boot:run
 ```
 
-Les tests ont besoin d'une base à eux — jamais celle de développement : la migration `043` supprime les données opérationnelles.
+Tests need a database of their own — never the development one: migration `043` deletes operational data.
 
 ```bash
 docker run -d --name bf-test -e POSTGRES_DB=buildflow -e POSTGRES_USER=buildflow_dev -e POSTGRES_PASSWORD=localdevpw -p 5448:5432 postgres:16-alpine
 ```
 
 ```bash
-DB_URL=jdbc:postgresql://localhost:5448/buildflow DB_PASSWORD=localdevpw JWT_SECRET=une-cle-de-32-caracteres-minimum ./mvnw -B clean verify
+DB_URL=jdbc:postgresql://localhost:5448/buildflow DB_PASSWORD=localdevpw JWT_SECRET=a-key-of-at-least-32-characters ./mvnw -B clean verify
 ```
 
-`JWT_SECRET` est nécessaire même pour les tests : `ErpApplicationTests` ne charge pas le profil `test` et lit `application.yml`, qui l'exige.
+`JWT_SECRET` is needed even for tests: `ErpApplicationTests` does not load the `test` profile and reads `application.yml`, which requires it.
